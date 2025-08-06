@@ -1,6 +1,7 @@
 package com.duplicateremover.controller;
 
 import com.duplicateremover.model.ScanResult;
+import com.duplicateremover.model.FileInfo;
 import com.duplicateremover.service.FileScanService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -39,6 +40,29 @@ public class FileScanController {
             return ResponseEntity.notFound().build();
         }
         return ResponseEntity.ok(result);
+    }
+
+    @GetMapping("/scan/{scanId}/progress")
+    public ResponseEntity<?> getScanProgress(@PathVariable String scanId) {
+        Map<String, Object> progress = fileScanService.getScanProgress(scanId);
+        if (progress == null) {
+            return ResponseEntity.notFound().build();
+        }
+        return ResponseEntity.ok(progress);
+    }
+
+    @GetMapping("/scan/{scanId}/duplicates/stream")
+    public ResponseEntity<?> getDuplicateStream(@PathVariable String scanId) {
+        List<FileInfo> duplicates = fileScanService.getCurrentDuplicates(scanId);
+        if (duplicates == null) {
+            return ResponseEntity.notFound().build();
+        }
+        return ResponseEntity.ok(Map.of(
+            "scanId", scanId,
+            "duplicates", duplicates,
+            "count", duplicates.size(),
+            "timestamp", System.currentTimeMillis()
+        ));
     }
 
     @GetMapping("/scans")

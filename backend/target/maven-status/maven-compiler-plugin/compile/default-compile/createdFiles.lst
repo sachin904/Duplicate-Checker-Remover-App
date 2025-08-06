@@ -1,0 +1,8 @@
+com\duplicateremover\service\FileHashService.class
+com\duplicateremover\service\FileScanService.class
+com\duplicateremover\model\ScanResult.class
+com\duplicateremover\service\FileCategoryService.class
+com\duplicateremover\service\FileScanService$ScanProgress.class
+com\duplicateremover\Application.class
+com\duplicateremover\model\FileInfo.class
+com\duplicateremover\controller\FileScanController.class

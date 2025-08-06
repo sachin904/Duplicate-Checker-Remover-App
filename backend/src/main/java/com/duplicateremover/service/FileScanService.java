@@ -16,6 +16,7 @@ import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -30,27 +31,98 @@ public class FileScanService {
     @Autowired
     private FileCategoryService categoryService;
 
-    private final Map<String, ScanResult> scanResults = new HashMap<>();
+    private final Map<String, ScanResult> scanResults = new ConcurrentHashMap<>();
+    private final Map<String, ScanProgress> scanProgress = new ConcurrentHashMap<>();
+    private final Map<String, List<FileInfo>> currentDuplicates = new ConcurrentHashMap<>();
+
+    public static class ScanProgress {
+        private String scanId;
+        private String status;
+        private int totalFiles;
+        private int processedFiles;
+        private int duplicateCount;
+        private LocalDateTime startTime;
+        private LocalDateTime lastUpdate;
+        private String currentDirectory;
+        private List<String> errors;
+
+        public ScanProgress(String scanId) {
+            this.scanId = scanId;
+            this.status = "STARTED";
+            this.totalFiles = 0;
+            this.processedFiles = 0;
+            this.duplicateCount = 0;
+            this.startTime = LocalDateTime.now();
+            this.lastUpdate = LocalDateTime.now();
+            this.errors = new ArrayList<>();
+        }
+
+        // Getters and Setters
+        public String getScanId() { return scanId; }
+        public void setScanId(String scanId) { this.scanId = scanId; }
+
+        public String getStatus() { return status; }
+        public void setStatus(String status) { this.status = status; }
+
+        public int getTotalFiles() { return totalFiles; }
+        public void setTotalFiles(int totalFiles) { this.totalFiles = totalFiles; }
+
+        public int getProcessedFiles() { return processedFiles; }
+        public void setProcessedFiles(int processedFiles) { this.processedFiles = processedFiles; }
+
+        public int getDuplicateCount() { return duplicateCount; }
+        public void setDuplicateCount(int duplicateCount) { this.duplicateCount = duplicateCount; }
+
+        public LocalDateTime getStartTime() { return startTime; }
+        public void setStartTime(LocalDateTime startTime) { this.startTime = startTime; }
+
+        public LocalDateTime getLastUpdate() { return lastUpdate; }
+        public void setLastUpdate(LocalDateTime lastUpdate) { this.lastUpdate = lastUpdate; }
+
+        public String getCurrentDirectory() { return currentDirectory; }
+        public void setCurrentDirectory(String currentDirectory) { this.currentDirectory = currentDirectory; }
+
+        public List<String> getErrors() { return errors; }
+        public void setErrors(List<String> errors) { this.errors = errors; }
+
+        public double getProgressPercentage() {
+            if (totalFiles == 0) return 0.0;
+            return (double) processedFiles / totalFiles * 100.0;
+        }
+    }
 
     public String startScan(String directory) {
         String scanId = UUID.randomUUID().toString();
         logger.info("Starting scan for directory: {} with scanId: {}", directory, scanId);
 
-        try {
-            ScanResult scanResult = performScan(scanId, directory);
-            scanResults.put(scanId, scanResult);
-            logger.info("Scan completed successfully for scanId: {}", scanId);
-            return scanId;
-        } catch (Exception e) {
-            logger.error("Error during scan for directory: {}", directory, e);
-            ScanResult errorResult = new ScanResult(scanId, directory, LocalDateTime.now());
-            errorResult.setStatus("FAILED");
-            scanResults.put(scanId, errorResult);
-            throw new RuntimeException("Scan failed: " + e.getMessage());
-        }
+        // Initialize progress tracking
+        ScanProgress progress = new ScanProgress(scanId);
+        scanProgress.put(scanId, progress);
+        currentDuplicates.put(scanId, new ArrayList<>());
+
+        // Start scanning in a separate thread to allow real-time updates
+        new Thread(() -> {
+            try {
+                performScanWithProgress(scanId, directory);
+            } catch (Exception e) {
+                logger.error("Error during scan for directory: {}", directory, e);
+                progress.setStatus("FAILED");
+                progress.getErrors().add(e.getMessage());
+            }
+        }).start();
+
+        return scanId;
     }
 
-    private ScanResult performScan(String scanId, String directory) throws IOException {
+    private void performScanWithProgress(String scanId, String directory) throws IOException {
+        ScanProgress progress = scanProgress.get(scanId);
+        if (progress == null) {
+            throw new IllegalStateException("Progress tracking not initialized for scanId: " + scanId);
+        }
+        
+        progress.setStatus("SCANNING");
+        progress.setCurrentDirectory(directory);
+
         Path directoryPath = Paths.get(directory);
         
         if (!Files.exists(directoryPath) || !Files.isDirectory(directoryPath)) {
@@ -58,28 +130,83 @@ public class FileScanService {
         }
 
         List<FileInfo> allFiles = new ArrayList<>();
+        Map<String, List<FileInfo>> hashGroups = new HashMap<>();
+        List<FileInfo> duplicates = new ArrayList<>();
 
         try (Stream<Path> paths = Files.walk(directoryPath)) {
             List<Path> filePaths = paths.filter(Files::isRegularFile)
                                        .collect(Collectors.toList());
 
-            for (Path filePath : filePaths) {
+            progress.setTotalFiles(filePaths.size());
+            logger.info("Found {} files to process", filePaths.size());
+
+            for (int i = 0; i < filePaths.size(); i++) {
+                Path filePath = filePaths.get(i);
                 try {
                     FileInfo fileInfo = createFileInfo(filePath);
                     allFiles.add(fileInfo);
+                    
+                    // Update progress
+                    progress.setProcessedFiles(i + 1);
+                    progress.setLastUpdate(LocalDateTime.now());
+
+                    // Check for duplicates in real-time
+                    String hash = fileInfo.getHash();
+                    if (hash != null && !hash.isEmpty()) {
+                        if (hashGroups.containsKey(hash)) {
+                            // Found a duplicate
+                            List<FileInfo> group = hashGroups.get(hash);
+                            group.add(fileInfo);
+                            fileInfo.setDuplicate(true);
+                            
+                            // Mark all files in the group as duplicates
+                            for (FileInfo existingFile : group) {
+                                existingFile.setDuplicate(true);
+                            }
+                            
+                            // Update duplicate count
+                            progress.setDuplicateCount(progress.getDuplicateCount() + 1);
+                            
+                            // Add to current duplicates list (only add the new duplicate)
+                            duplicates.add(fileInfo);
+                            currentDuplicates.put(scanId, new ArrayList<>(duplicates));
+                            
+                            logger.debug("Found duplicate: {}", fileInfo.getFileName());
+                        } else {
+                            // New hash, create a new group
+                            List<FileInfo> newGroup = new ArrayList<>();
+                            newGroup.add(fileInfo);
+                            hashGroups.put(hash, newGroup);
+                        }
+                    } else {
+                        logger.warn("Skipping file with null/empty hash: {}", filePath);
+                        progress.getErrors().add("Invalid hash for file: " + filePath.toString());
+                    }
+
+                    // Update progress every 10 files or for duplicates
+                    if ((i + 1) % 10 == 0 || fileInfo.isDuplicate()) {
+                        progress.setLastUpdate(LocalDateTime.now());
+                    }
+
                 } catch (IOException e) {
                     logger.warn("Failed to process file: {}", filePath, e);
+                    progress.getErrors().add("Failed to process: " + filePath.toString() + " - " + e.getMessage());
+                } catch (Exception e) {
+                    logger.error("Unexpected error processing file: {}", filePath, e);
+                    progress.getErrors().add("Unexpected error: " + filePath.toString() + " - " + e.getMessage());
                 }
             }
         }
 
-        // Detect duplicates
-        Map<String, List<FileInfo>> duplicateGroups = findDuplicates(allFiles);
-        
         // Categorize files
         List<FileInfo> categorizedFiles = categoryService.categorizeFiles(allFiles);
         Map<String, List<FileInfo>> categorizedGroups = categorizedFiles.stream()
                 .collect(Collectors.groupingBy(FileInfo::getCategory));
+
+        // Create final duplicate groups
+        Map<String, List<FileInfo>> duplicateGroups = hashGroups.entrySet().stream()
+                .filter(entry -> entry.getValue().size() > 1)
+                .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
 
         // Create scan result
         ScanResult scanResult = new ScanResult(scanId, directory, LocalDateTime.now());
@@ -91,7 +218,37 @@ public class FileScanService {
                 .mapToInt(group -> group.size() - 1)
                 .sum());
 
-        return scanResult;
+        // Update final status
+        progress.setStatus("COMPLETED");
+        progress.setLastUpdate(LocalDateTime.now());
+        scanResults.put(scanId, scanResult);
+        
+        logger.info("Scan completed successfully for scanId: {}", scanId);
+    }
+
+    public Map<String, Object> getScanProgress(String scanId) {
+        ScanProgress progress = scanProgress.get(scanId);
+        if (progress == null) {
+            return null;
+        }
+
+        Map<String, Object> result = new HashMap<>();
+        result.put("scanId", progress.getScanId());
+        result.put("status", progress.getStatus());
+        result.put("totalFiles", progress.getTotalFiles());
+        result.put("processedFiles", progress.getProcessedFiles());
+        result.put("duplicateCount", progress.getDuplicateCount());
+        result.put("progressPercentage", progress.getProgressPercentage());
+        result.put("startTime", progress.getStartTime());
+        result.put("lastUpdate", progress.getLastUpdate());
+        result.put("currentDirectory", progress.getCurrentDirectory());
+        result.put("errors", progress.getErrors());
+
+        return result;
+    }
+
+    public List<FileInfo> getCurrentDuplicates(String scanId) {
+        return currentDuplicates.get(scanId);
     }
 
     private FileInfo createFileInfo(Path filePath) throws IOException {
@@ -118,24 +275,6 @@ public class FileScanService {
     private String getFileExtension(String fileName) {
         int lastDotIndex = fileName.lastIndexOf('.');
         return lastDotIndex > 0 ? fileName.substring(lastDotIndex + 1).toLowerCase() : "";
-    }
-
-    private Map<String, List<FileInfo>> findDuplicates(List<FileInfo> files) {
-        Map<String, List<FileInfo>> hashGroups = files.stream()
-                .collect(Collectors.groupingBy(FileInfo::getHash));
-
-        // Mark duplicates and return groups with more than one file
-        Map<String, List<FileInfo>> duplicateGroups = new HashMap<>();
-        
-        for (Map.Entry<String, List<FileInfo>> entry : hashGroups.entrySet()) {
-            List<FileInfo> group = entry.getValue();
-            if (group.size() > 1) {
-                group.forEach(file -> file.setDuplicate(true));
-                duplicateGroups.put(entry.getKey(), group);
-            }
-        }
-
-        return duplicateGroups;
     }
 
     public ScanResult getScanResult(String scanId) {

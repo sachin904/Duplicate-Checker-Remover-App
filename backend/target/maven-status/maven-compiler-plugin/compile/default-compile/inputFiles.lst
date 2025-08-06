@@ -1,7 +1,7 @@
-D:\IBM_Hackathon\DupliAppRemover\backend\src\main\java\com\duplicateremover\service\FileHashService.java
-D:\IBM_Hackathon\DupliAppRemover\backend\src\main\java\com\duplicateremover\model\ScanResult.java
-D:\IBM_Hackathon\DupliAppRemover\backend\src\main\java\com\duplicateremover\service\FileCategoryService.java
-D:\IBM_Hackathon\DupliAppRemover\backend\src\main\java\com\duplicateremover\Application.java
-D:\IBM_Hackathon\DupliAppRemover\backend\src\main\java\com\duplicateremover\model\FileInfo.java
-D:\IBM_Hackathon\DupliAppRemover\backend\src\main\java\com\duplicateremover\controller\FileScanController.java
-D:\IBM_Hackathon\DupliAppRemover\backend\src\main\java\com\duplicateremover\service\FileScanService.java
+D:\IBM_Hackathon\IBM_Hackathon\backend\src\main\java\com\duplicateremover\service\FileHashService.java
+D:\IBM_Hackathon\IBM_Hackathon\backend\src\main\java\com\duplicateremover\Application.java
+D:\IBM_Hackathon\IBM_Hackathon\backend\src\main\java\com\duplicateremover\service\FileScanService.java
+D:\IBM_Hackathon\IBM_Hackathon\backend\src\main\java\com\duplicateremover\controller\FileScanController.java
+D:\IBM_Hackathon\IBM_Hackathon\backend\src\main\java\com\duplicateremover\service\FileCategoryService.java
+D:\IBM_Hackathon\IBM_Hackathon\backend\src\main\java\com\duplicateremover\model\FileInfo.java
+D:\IBM_Hackathon\IBM_Hackathon\backend\src\main\java\com\duplicateremover\model\ScanResult.java

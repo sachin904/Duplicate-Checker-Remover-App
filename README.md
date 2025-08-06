@@ -8,18 +8,37 @@ A full-stack web application for detecting and removing duplicate applications u
 - **Directory Scanning**: Recursively scan specified directories
 - **SHA-256 Hashing**: Generate unique content hashes for duplicate detection
 - **Rule-based Categorization**: Organize files by type, extension, and patterns
+- **Real-time Progress Tracking**: Monitor scan progress and duplicate detection in real-time
 - **RESTful API**: Complete API for scan operations, file management, and logging
 - **Comprehensive Logging**: Track all operations with detailed logs
 - **File Deletion**: Secure deletion of selected duplicate files
 
 ### Frontend (React + TypeScript)
 - **Intuitive Interface**: Modern, responsive design with beautiful animations
-- **Real-time Scanning**: Live updates during scan operations
+- **Real-time Scanning**: Live updates during scan operations with duplicate streaming
 - **Visual Duplicate Detection**: Highlighted duplicate groups with detailed information
 - **Category Management**: Organize files by type with visual categorization
 - **Batch Operations**: Select and delete multiple duplicates at once
 - **Settings Panel**: Configure scan paths and categorization rules
 - **Activity Logs**: Complete history of all scan operations
+
+## 🆕 Real-Time Scanning Feature
+
+The application now supports **real-time duplicate detection** during scanning:
+
+### Real-Time Features
+- **Live Progress Tracking**: See scan progress with percentage completion
+- **Instant Duplicate Detection**: Duplicates appear as they are found during scanning
+- **Real-time Statistics**: Watch file counts and duplicate counts update live
+- **Pause/Resume**: Control real-time updates with pause/resume functionality
+- **Error Tracking**: View processing errors in real-time
+- **Smooth Animations**: Beautiful progress bars and status indicators
+
+### How It Works
+1. **Start Scan**: Enter directory path and click "Start Scan"
+2. **Real-Time Monitoring**: Watch as files are processed and duplicates are detected
+3. **Live Updates**: Progress bar, statistics, and duplicate list update automatically
+4. **Complete Results**: Once scanning finishes, view full categorized results
 
 ## 🛠️ Tech Stack
 
@@ -109,6 +128,8 @@ The frontend automatically connects to the backend at `http://localhost:8080`. T
 ### Scan Operations
 - `POST /api/scan` - Start a new directory scan
 - `GET /api/scan/{scanId}` - Get scan results by ID
+- `GET /api/scan/{scanId}/progress` - Get real-time scan progress
+- `GET /api/scan/{scanId}/duplicates/stream` - Get real-time duplicate stream
 - `GET /api/scans` - Get all scan results
 
 ### File Management  
@@ -119,31 +140,38 @@ The frontend automatically connects to the backend at `http://localhost:8080`. T
 
 ## 🎯 Usage
 
+### Real-Time Scanning
 1. **Start a Scan**
    - Enter a directory path in the scan form
    - Click "Start Scan" to begin processing
-   - View real-time results as they appear
+   - Watch real-time progress and duplicate detection
 
-2. **Review Results**
+2. **Monitor Progress**
+   - View live progress bar and statistics
+   - See duplicates appear as they are found
+   - Monitor processing errors in real-time
+   - Use pause/resume to control updates
+
+3. **Review Results**
    - Navigate to the "Files" tab to see all scanned files
    - Duplicate files are highlighted in red
    - Use filters to show only duplicates
 
-3. **Categorize Files**
+4. **Categorize Files**
    - Visit the "Categories" tab to see files organized by type
    - Each category shows file count and duplicate statistics
 
-4. **Delete Duplicates**
+5. **Delete Duplicates**
    - Select duplicate files using checkboxes
    - Use "Select All Duplicates" for batch selection
    - Click "Delete Selected" to remove chosen files
 
-5. **Configure Settings**
+6. **Configure Settings**
    - Set default scan directories
    - Add custom categorization rules
    - Configure file type patterns
 
-6. **View Logs**
+7. **View Logs**
    - Check the "Logs" tab for scan history
    - Review detailed activity timelines
    - Filter logs by status or search terms
@@ -164,6 +192,12 @@ The frontend automatically connects to the backend at `http://localhost:8080`. T
 ├── frontend/                   # React frontend
 │   ├── src/
 │   │   ├── components/              # React components
+│   │   │   ├── RealTimeScan.tsx     # Real-time scanning component
+│   │   │   ├── ScanForm.tsx         # Directory scan form
+│   │   │   ├── FilesList.tsx        # Files listing and management
+│   │   │   ├── CategoryView.tsx     # Categorized files view
+│   │   │   ├── SettingsPanel.tsx    # Settings configuration
+│   │   │   └── LogsPanel.tsx        # Activity logs and history
 │   │   ├── services/               # API service layer
 │   │   ├── types/                  # TypeScript interfaces
 │   │   └── App.tsx                 # Main app component
@@ -181,6 +215,7 @@ The frontend automatically connects to the backend at `http://localhost:8080`. T
 - **Color-coded Categories**: Easy identification of file types
 - **Interactive Elements**: Hover effects and smooth transitions
 - **Accessibility**: Proper contrast ratios and keyboard navigation
+- **Real-time Updates**: Live progress tracking and duplicate streaming
 
 ## ⚠️ Important Notes
 
