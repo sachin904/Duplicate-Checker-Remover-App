@@ -10,6 +10,7 @@ public class ScanResult {
     private LocalDateTime scanTime;
     private List<FileInfo> files;
     private Map<String, List<FileInfo>> duplicateGroups;
+    private Map<String, List<FileInfo>> directoryDuplicates;
     private Map<String, List<FileInfo>> categorizedFiles;
     private int totalFiles;
     private int duplicateCount;
@@ -39,6 +40,9 @@ public class ScanResult {
 
     public Map<String, List<FileInfo>> getDuplicateGroups() { return duplicateGroups; }
     public void setDuplicateGroups(Map<String, List<FileInfo>> duplicateGroups) { this.duplicateGroups = duplicateGroups; }
+
+    public Map<String, List<FileInfo>> getDirectoryDuplicates() { return directoryDuplicates; }
+    public void setDirectoryDuplicates(Map<String, List<FileInfo>> directoryDuplicates) { this.directoryDuplicates = directoryDuplicates; }
 
     public Map<String, List<FileInfo>> getCategorizedFiles() { return categorizedFiles; }
     public void setCategorizedFiles(Map<String, List<FileInfo>> categorizedFiles) { this.categorizedFiles = categorizedFiles; }

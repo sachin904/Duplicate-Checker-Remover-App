@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { File, Trash2, AlertTriangle, Check, Clock, HardDrive } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { File, Trash2, AlertTriangle, Check, Clock, HardDrive, Folder, FolderOpen } from 'lucide-react';
 import { ScanResult, FileInfo } from '../types';
 
 interface FilesListProps {
@@ -9,8 +9,34 @@ interface FilesListProps {
 }
 
 const FilesList: React.FC<FilesListProps> = ({ scanResult, onDeleteFiles, isLoading }) => {
+  // Create an updated list of files with corrected duplicate status
+  // If only one file remains for a given hash, it should be marked as unique (duplicate = false)
+  const updatedFiles = useMemo(() => {
+    if (!scanResult || !scanResult.files) return [];
+    
+    // Group files by hash
+    const filesByHash = scanResult.files.reduce<Record<string, FileInfo[]>>((acc, file) => {
+      if (!acc[file.hash]) acc[file.hash] = [];
+      acc[file.hash].push(file);
+      return acc;
+    }, {});
+
+    // Update duplicate status: if only one file remains with a given hash, mark it as unique
+    return scanResult.files.map(file => {
+      const filesWithSameHash = filesByHash[file.hash] || [];
+      if (filesWithSameHash.length <= 1) {
+        // Only one file with this hash, so it's unique now
+        return { ...file, duplicate: false };
+      }
+      // Multiple files with same hash, keep original duplicate status
+      return file;
+    });
+  }, [scanResult]);
+
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
+  const [selectedDirectories, setSelectedDirectories] = useState<Set<string>>(new Set());
   const [showDuplicatesOnly, setShowDuplicatesOnly] = useState(false);
+  const [activeTab, setActiveTab] = useState<'files' | 'duplicates' | 'directories'>('files');
 
   const handleFileSelect = (filePath: string) => {
     const newSelected = new Set(selectedFiles);
@@ -22,16 +48,29 @@ const FilesList: React.FC<FilesListProps> = ({ scanResult, onDeleteFiles, isLoad
     setSelectedFiles(newSelected);
   };
 
+  const handleDirectorySelect = (directoryPath: string) => {
+    const newSelected = new Set(selectedDirectories);
+    if (newSelected.has(directoryPath)) {
+      newSelected.delete(directoryPath);
+    } else {
+      newSelected.add(directoryPath);
+    }
+    setSelectedDirectories(newSelected);
+  };
+
+  // Select all duplicates (including originals)
   const handleSelectAllDuplicates = () => {
-    const duplicateFiles = scanResult.files.filter(file => file.duplicate);
+    const duplicateFiles = updatedFiles.filter(file => file.duplicate);
     const duplicatePaths = duplicateFiles.map(file => file.filePath);
     setSelectedFiles(new Set(duplicatePaths));
   };
 
   const handleDeleteSelected = () => {
-    if (selectedFiles.size > 0) {
-      onDeleteFiles(Array.from(selectedFiles));
+    const allSelectedPaths = [...selectedFiles, ...selectedDirectories];
+    if (allSelectedPaths.length > 0) {
+      onDeleteFiles(allSelectedPaths);
       setSelectedFiles(new Set());
+      setSelectedDirectories(new Set());
     }
   };
 
@@ -46,11 +85,20 @@ const FilesList: React.FC<FilesListProps> = ({ scanResult, onDeleteFiles, isLoad
     return new Date(dateString).toLocaleString();
   };
 
-  const filesToDisplay = showDuplicatesOnly 
-    ? scanResult.files.filter(file => file.duplicate)
-    : scanResult.files;
+  const getDirectoryFromPath = (filePath: string): string => {
+    const pathParts = filePath.split(/[\\/]/);
+    return pathParts.slice(0, -1).join('/');
+  };
 
+  const filesToDisplay = showDuplicatesOnly 
+    ? updatedFiles.filter(file => file.duplicate)
+    : updatedFiles;
+
+  // Calculate updated duplicate count from the corrected files
+  const currentDuplicateCount = updatedFiles.filter(file => file.duplicate).length;
+  
   const duplicateGroups = Object.values(scanResult.duplicateGroups || {});
+  const directoryDuplicates = Object.values(scanResult.directoryDuplicates || {});
 
   return (
     <div className="space-y-6">
@@ -60,7 +108,8 @@ const FilesList: React.FC<FilesListProps> = ({ scanResult, onDeleteFiles, isLoad
           <div>
             <h3 className="text-xl font-bold text-gray-900">Scanned Files</h3>
             <p className="text-gray-600">
-              Found {scanResult.totalFiles} files with {scanResult.duplicateCount} duplicates
+              Found {updatedFiles.length} files with {currentDuplicateCount} duplicates
+              {updatedFiles.filter(f => f.markedForDeletion).length > 0 && ` (${updatedFiles.filter(f => f.markedForDeletion).length} mark for deletion)`}
             </p>
           </div>
           <div className="flex items-center space-x-4">
@@ -68,7 +117,9 @@ const FilesList: React.FC<FilesListProps> = ({ scanResult, onDeleteFiles, isLoad
               <input
                 type="checkbox"
                 checked={showDuplicatesOnly}
-                onChange={(e) => setShowDuplicatesOnly(e.target.checked)}
+                onChange={(e) => {
+                  setShowDuplicatesOnly(e.target.checked);
+                }}
                 className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
               />
               <span className="text-sm font-medium text-gray-700">Show duplicates only</span>
@@ -76,178 +127,381 @@ const FilesList: React.FC<FilesListProps> = ({ scanResult, onDeleteFiles, isLoad
           </div>
         </div>
 
+        {/* Tab Navigation */}
+        <div className="flex space-x-4 mb-6">
+
+          <button
+            onClick={() => setActiveTab('files')}
+            className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+              activeTab === 'files'
+                ? 'bg-blue-100 text-blue-700'
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            }`}
+          >
+            All Files
+          </button>
+          <button
+            onClick={() => setActiveTab('duplicates')}
+            className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+              activeTab === 'duplicates'
+                ? 'bg-red-100 text-red-700'
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            }`}
+          >
+            Duplicates ({currentDuplicateCount})
+          </button>
+            <button
+                onClick={handleSelectAllDuplicates}
+                className="bg-blue-100 text-blue-700 px-4 py-2 rounded-lg hover:bg-blue-200 transition-colors text-sm font-medium"
+            >
+                Select All Duplicates ({currentDuplicateCount})
+            </button>
+            <button
+                onClick={() => {
+                    setSelectedFiles(new Set());
+                    setSelectedDirectories(new Set());
+                }}
+                className="bg-gray-100 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-200 transition-colors text-sm font-medium"
+            >
+                Clear Selection
+            </button>
+          {directoryDuplicates.length > 0 && (
+            <button
+              onClick={() => setActiveTab('directories')}
+              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                activeTab === 'directories'
+                  ? 'bg-orange-100 text-orange-700'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              Duplicate Directories ({directoryDuplicates.length})
+            </button>
+
+          )}
+        </div>
+
+        {/* Action Buttons */}
         {duplicateGroups.length > 0 && (
           <div className="flex flex-wrap gap-4 mb-6">
-            <button
-              onClick={handleSelectAllDuplicates}
-              className="bg-blue-100 text-blue-700 px-4 py-2 rounded-lg hover:bg-blue-200 transition-colors text-sm font-medium"
-            >
-              Select All Duplicates
-            </button>
-            <button
-              onClick={() => setSelectedFiles(new Set())}
-              className="bg-gray-100 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-200 transition-colors text-sm font-medium"
-            >
-              Clear Selection
-            </button>
-            {selectedFiles.size > 0 && (
+
+
+            {(selectedFiles.size > 0 || selectedDirectories.size > 0) && (
               <button
-                onClick={handleDeleteSelected}
+                onClick={() => {
+                  console.log('Delete button clicked');
+                  console.log('Selected files:', Array.from(selectedFiles));
+                  console.log('Selected directories:', Array.from(selectedDirectories));
+                  console.log('Total selected items:', selectedFiles.size + selectedDirectories.size);
+                  handleDeleteSelected();
+                }}
                 disabled={isLoading}
-                className="bg-red-500 text-white px-4 py-2 rounded-lg hover:bg-red-600 disabled:opacity-50 transition-colors text-sm font-medium flex items-center space-x-2"
+                className="bg-red-500 text-white px-4 py-2 rounded-lg hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium flex items-center space-x-2"
               >
                 <Trash2 className="w-4 h-4" />
-                <span>Delete Selected ({selectedFiles.size})</span>
+                <span>
+                  {isLoading 
+                    ? `Deleting ${selectedFiles.size + selectedDirectories.size} items...` 
+                    : `Delete (${selectedFiles.size + selectedDirectories.size})`
+                  }
+                </span>
               </button>
             )}
           </div>
         )}
       </div>
 
-      {/* Duplicate Groups */}
-      {duplicateGroups.length > 0 && !showDuplicatesOnly && (
-        <div className="bg-white rounded-xl shadow-lg p-6">
-          <div className="flex items-center space-x-3 mb-6">
+      {/* Content based on active tab */}
+      {activeTab === 'files' && (
+        <FilesTable 
+          files={filesToDisplay}
+          selectedFiles={selectedFiles}
+          onFileSelect={handleFileSelect}
+          formatFileSize={formatFileSize}
+          formatDate={formatDate}
+        />
+      )}
+
+      {activeTab === 'duplicates' && (
+        <DuplicatesView 
+          duplicateGroups={duplicateGroups}
+          selectedFiles={selectedFiles}
+          onFileSelect={handleFileSelect}
+          formatFileSize={formatFileSize}
+          formatDate={formatDate}
+        />
+      )}
+
+      {activeTab === 'directories' && (
+        <DirectoriesView 
+          directoryDuplicates={directoryDuplicates}
+          selectedDirectories={selectedDirectories}
+          onDirectorySelect={handleDirectorySelect}
+          formatFileSize={formatFileSize}
+          formatDate={formatDate}
+        />
+      )}
+    </div>
+  );
+};
+
+// Files Table Component
+const FilesTable: React.FC<{
+  files: FileInfo[];
+  selectedFiles: Set<string>;
+  onFileSelect: (filePath: string) => void;
+  formatFileSize: (bytes: number) => string;
+  formatDate: (dateString: string) => string;
+}> = ({ files, selectedFiles, onFileSelect, formatFileSize, formatDate }) => {
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      const allPaths = files.map(f => f.filePath);
+      allPaths.forEach(path => onFileSelect(path));
+    } else {
+      // Clear all selections
+      selectedFiles.forEach(path => onFileSelect(path));
+    }
+  };
+
+  const allSelected = files.length > 0 && files.every(file => selectedFiles.has(file.filePath));
+  const someSelected = files.some(file => selectedFiles.has(file.filePath));
+
+  return (
+    <div className="bg-white rounded-xl shadow-lg overflow-hidden">
+      <div className="overflow-x-auto">
+        <table className="w-full">
+          <thead className="bg-gray-50">
+            <tr>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <input
+                  type="checkbox"
+                  checked={allSelected}
+                  ref={(input) => {
+                    if (input) input.indeterminate = someSelected && !allSelected;
+                  }}
+                  onChange={(e) => handleSelectAll(e.target.checked)}
+                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                File
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Category
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Size
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Modified
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Status
+              </th>
+            </tr>
+          </thead>
+          <tbody className="bg-white divide-y divide-gray-200">
+            {files.map((file) => (
+              <tr 
+                key={file.filePath}
+                className={`hover:bg-gray-50 ${
+                  file.duplicate 
+                    ? file.markedForDeletion 
+                      ? 'bg-red-100' 
+                      : 'bg-yellow-50'
+                    : ''
+                }`}
+              >
+                <td className="px-6 py-4 whitespace-nowrap">
+                  <input
+                    type="checkbox"
+                    checked={selectedFiles.has(file.filePath)}
+                    onChange={() => onFileSelect(file.filePath)}
+                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap">
+                  <div className="flex items-center">
+                    <File className="w-5 h-5 text-gray-400 mr-3" />
+                    <div>
+                      <div className="text-sm font-medium text-gray-900">{file.fileName}</div>
+                      <div className="text-sm text-gray-500 truncate max-w-xs">{file.filePath}</div>
+                    </div>
+                  </div>
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap">
+                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                    {file.category}
+                  </span>
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                  <div className="flex items-center">
+                    <HardDrive className="w-4 h-4 text-gray-400 mr-2" />
+                    {formatFileSize(file.size)}
+                  </div>
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                  <div className="flex items-center">
+                    <Clock className="w-4 h-4 text-gray-400 mr-2" />
+                    {formatDate(file.lastModified)}
+                  </div>
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap">
+                  {file.markedForDeletion ? (
+                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                      <AlertTriangle className="w-3 h-3 mr-1" />
+                      Duplicate
+                    </span>
+                  ) : file.duplicate ? (
+                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                      <AlertTriangle className="w-3 h-3 mr-1" />
+                        Duplicate
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                      <Check className="w-3 h-3 mr-1" />
+                      Unique
+                    </span>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {files.length === 0 && (
+        <div className="text-center py-12">
+          <File className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+          <p className="text-gray-500">No files to display</p>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// Duplicates View Component
+const DuplicatesView: React.FC<{
+  duplicateGroups: FileInfo[][];
+  selectedFiles: Set<string>;
+  onFileSelect: (filePath: string) => void;
+  formatFileSize: (bytes: number) => string;
+  formatDate: (dateString: string) => string;
+}> = ({ duplicateGroups, selectedFiles, onFileSelect, formatFileSize, formatDate }) => (
+  <div className="space-y-4">
+    {duplicateGroups.map((group, index) => (
+      <div key={index} className="bg-white rounded-xl shadow-lg p-6">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center space-x-3">
             <AlertTriangle className="w-6 h-6 text-amber-500" />
-            <h4 className="text-lg font-bold text-gray-900">Duplicate Groups</h4>
+            <h4 className="text-lg font-bold text-gray-900">
+              Duplicate Group {index + 1} - {group.length} files
+            </h4>
+          </div>
+          <div className="flex items-center space-x-2">
+            <span className="text-sm text-gray-500">
+              {group.filter(f => f.markedForDeletion).length} marked for deletion
+            </span>
+          </div>
+        </div>
+        
+        <div className="space-y-2">
+          {group.map((file, fileIndex) => (
+            <div 
+              key={fileIndex} 
+              className={`flex items-center justify-between py-3 px-4 rounded-lg border ${
+                file.markedForDeletion 
+                  ? 'bg-red-50 border-red-200' 
+                  : 'bg-yellow-50 border-yellow-200'
+              }`}
+            >
+              <div className="flex items-center space-x-3">
+                <input
+                  type="checkbox"
+                  checked={selectedFiles.has(file.filePath)}
+                  onChange={() => onFileSelect(file.filePath)}
+                  className="rounded border-gray-300 text-red-600 focus:ring-red-500"
+                />
+                <File className="w-4 h-4 text-gray-500" />
+                <div>
+                  <span className="text-sm font-medium text-gray-900">{file.fileName}</span>
+                  <div className="text-xs text-gray-500">{file.filePath}</div>
+                </div>
+              </div>
+              <div className="flex items-center space-x-4 text-xs text-gray-500">
+                <span>{formatFileSize(file.size)}</span>
+                <span>{formatDate(file.lastModified)}</span>
+                {file.markedForDeletion && (
+                  <span className="bg-red-200 text-red-800 px-2 py-1 rounded text-xs font-medium">
+                    Marked for Deletion
+                  </span>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    ))}
+  </div>
+);
+
+// Directories View Component
+const DirectoriesView: React.FC<{
+  directoryDuplicates: FileInfo[][];
+  selectedDirectories: Set<string>;
+  onDirectorySelect: (directoryPath: string) => void;
+  formatFileSize: (bytes: number) => string;
+  formatDate: (dateString: string) => string;
+}> = ({ directoryDuplicates, selectedDirectories, onDirectorySelect, formatFileSize, formatDate }) => (
+  <div className="space-y-4">
+    {directoryDuplicates.map((group, index) => {
+      const directories = group.reduce((acc, file) => {
+        const dir = file.filePath.split(/[\\/]/).slice(0, -1).join('/');
+        if (!acc.includes(dir)) acc.push(dir);
+        return acc;
+      }, [] as string[]);
+
+      return (
+        <div key={index} className="bg-white rounded-xl shadow-lg p-6">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center space-x-3">
+              <Folder className="w-6 h-6 text-orange-500" />
+              <h4 className="text-lg font-bold text-gray-900">
+                Duplicate Directory Group {index + 1} - {directories.length} directories
+              </h4>
+            </div>
           </div>
           
-          <div className="space-y-4">
-            {duplicateGroups.map((group, index) => (
-              <div key={index} className="border border-red-200 rounded-lg p-4 bg-red-50">
-                <p className="font-medium text-red-800 mb-2">
-                  Group {index + 1} - {group.length} duplicate files
-                </p>
-                <div className="space-y-2">
-                  {group.map((file, fileIndex) => (
-                    <div key={fileIndex} className="flex items-center justify-between py-2 px-3 bg-white rounded border">
-                      <div className="flex items-center space-x-3">
-                        <input
-                          type="checkbox"
-                          checked={selectedFiles.has(file.filePath)}
-                          onChange={() => handleFileSelect(file.filePath)}
-                          className="rounded border-gray-300 text-red-600 focus:ring-red-500"
-                        />
-                        <File className="w-4 h-4 text-gray-500" />
-                        <span className="text-sm font-mono text-gray-700">{file.fileName}</span>
-                      </div>
-                      <div className="flex items-center space-x-4 text-xs text-gray-500">
-                        <span>{formatFileSize(file.size)}</span>
-                        <span>{formatDate(file.lastModified)}</span>
+          <div className="space-y-3">
+            {directories.map((directory, dirIndex) => (
+              <div key={dirIndex} className="border border-orange-200 rounded-lg p-4 bg-orange-50">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-3">
+                    <input
+                      type="checkbox"
+                      checked={selectedDirectories.has(directory)}
+                      onChange={() => onDirectorySelect(directory)}
+                      className="rounded border-gray-300 text-orange-600 focus:ring-orange-500"
+                    />
+                    <FolderOpen className="w-5 h-5 text-orange-500" />
+                    <div>
+                      <span className="text-sm font-medium text-gray-900">{directory}</span>
+                      <div className="text-xs text-gray-500">
+                        {group.filter(f => f.filePath.startsWith(directory)).length} files
                       </div>
                     </div>
-                  ))}
+                  </div>
+                  <div className="text-xs text-gray-500">
+                    {formatFileSize(group.filter(f => f.filePath.startsWith(directory))
+                      .reduce((sum, f) => sum + f.size, 0))}
+                  </div>
                 </div>
               </div>
             ))}
           </div>
         </div>
-      )}
-
-      {/* Files Table */}
-      <div className="bg-white rounded-xl shadow-lg overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  <input
-                    type="checkbox"
-                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                    onChange={(e) => {
-                      if (e.target.checked) {
-                        setSelectedFiles(new Set(filesToDisplay.map(f => f.filePath)));
-                      } else {
-                        setSelectedFiles(new Set());
-                      }
-                    }}
-                  />
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  File
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Category
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Size
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Modified
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Status
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {filesToDisplay.map((file) => (
-                <tr 
-                  key={file.filePath}
-                  className={`hover:bg-gray-50 ${file.duplicate ? 'bg-red-25' : ''}`}
-                >
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <input
-                      type="checkbox"
-                      checked={selectedFiles.has(file.filePath)}
-                      onChange={() => handleFileSelect(file.filePath)}
-                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                    />
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="flex items-center">
-                      <File className="w-5 h-5 text-gray-400 mr-3" />
-                      <div>
-                        <div className="text-sm font-medium text-gray-900">{file.fileName}</div>
-                        <div className="text-sm text-gray-500 truncate max-w-xs">{file.filePath}</div>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                      {file.category}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    <div className="flex items-center">
-                      <HardDrive className="w-4 h-4 text-gray-400 mr-2" />
-                      {formatFileSize(file.size)}
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    <div className="flex items-center">
-                      <Clock className="w-4 h-4 text-gray-400 mr-2" />
-                      {formatDate(file.lastModified)}
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    {file.duplicate ? (
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
-                        <AlertTriangle className="w-3 h-3 mr-1" />
-                        Duplicate
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                        <Check className="w-3 h-3 mr-1" />
-                        Unique
-                      </span>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        {filesToDisplay.length === 0 && (
-          <div className="text-center py-12">
-            <File className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-            <p className="text-gray-500">No files to display</p>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-};
+      );
+    })}
+  </div>
+);
 
 export default FilesList;

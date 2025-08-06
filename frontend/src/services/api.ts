@@ -118,15 +118,40 @@ export const scanService = {
     }
   },
 
-  async deleteDuplicates(scanId: string, filePaths: string[]): Promise<{ success: boolean; deletedCount: number }> {
+  async deleteDuplicates(scanId: string, filePaths: string[]): Promise<boolean> {
     try {
+      console.log('Sending permanent deletion request for files:', filePaths);
       const response = await api.delete(`/duplicates/${scanId}`, {
         data: { filePaths }
       });
-      return response.data;
+      console.log('Permanent deletion response:', response.data);
+      
+      // Return true if the operation was successful (even partial success)
+      if (response.data.success !== undefined) {
+        return response.data.success;
+      }
+      
+      // Fallback: check if response status is OK
+      return response.status >= 200 && response.status < 300;
+    } catch (error: any) {
+      console.error('Error permanently deleting files:', error);
+      if (error.response?.data?.error) {
+        throw new Error(error.response.data.error);
+      }
+      throw new Error('Failed to permanently delete files');
+    }
+  },
+
+  async deleteDirectories(scanId: string, directoryPaths: string[]): Promise<boolean> {
+    try {
+      const response = await api.delete(`/directories/${scanId}`, {
+        data: { directoryPaths }
+      });
+      console.log('Directories permanently deleted:', response.data);
+      return response.data.success;
     } catch (error) {
-      console.error('Delete duplicates error:', error);
-      throw error;
+      console.error('Error permanently deleting directories:', error);
+      throw new Error('Failed to permanently delete directories');
     }
   },
 
@@ -138,5 +163,16 @@ export const scanService = {
       console.error('Health check error:', error);
       throw error;
     }
+  },
+
+  async testFileOperation(): Promise<any> {
+    try {
+      const response = await api.get('/test-file-operation');
+      return response.data;
+    } catch (error) {
+      console.error('File operation test error:', error);
+      throw error;
+    }
   }
 };
+

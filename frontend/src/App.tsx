@@ -59,17 +59,115 @@ function App() {
     }
   };
 
-  const handleDeleteFiles = async (filePaths: string[]) => {
-    if (!currentScan) return;
+  const handleDeleteFiles = async (paths: string[]) => {
+    if (!currentScan) {
+      console.error('No current scan available');
+      return;
+    }
+
+    if (paths.length === 0) {
+      console.warn('No files selected for deletion');
+      return;
+    }
 
     setIsLoading(true);
+    setError(''); // Clear any previous errors
+    
     try {
-      await scanService.deleteDuplicates(currentScan.scanId, filePaths);
-      // Refresh scan results
-      const updatedScan = await scanService.getScanResult(currentScan.scanId);
-      setCurrentScan(updatedScan);
+      console.log('Starting delete operation for paths:', paths);
+      
+      // Separate files and directories
+      const files: string[] = [];
+      const directories: string[] = [];
+      
+      for (const path of paths) {
+        // Check if it's a directory by looking for files that start with this path
+        const isDirectory = currentScan.files.some(file => 
+          file.filePath.startsWith(path + '/') || file.filePath.startsWith(path + '\\')
+        );
+        
+        if (isDirectory) {
+          directories.push(path);
+        } else {
+          files.push(path);
+        }
+      }
+
+      console.log('Files to permanently delete:', files);
+      console.log('Directories to permanently delete:', directories);
+
+      // Track overall success
+      let overallSuccess = true;
+      let successfulOperations = 0;
+      let totalOperations = 0;
+      const errorMessages: string[] = [];
+      
+      // Permanently delete files
+      if (files.length > 0) {
+        totalOperations++;
+        try {
+          const fileSuccess = await scanService.deleteDuplicates(currentScan.scanId, files);
+          console.log('File permanent deletion result:', fileSuccess);
+          if (fileSuccess) {
+            successfulOperations++;
+          } else {
+            overallSuccess = false;
+            errorMessages.push(`Failed to permanently delete ${files.length} files`);
+          }
+        } catch (error) {
+          console.error('File permanent deletion error:', error);
+          overallSuccess = false;
+          const message = error instanceof Error ? error.message : 'Unknown error deleting files';
+          errorMessages.push(`File operation failed: ${message}`);
+        }
+      }
+      
+      // Permanently delete directories
+      if (directories.length > 0) {
+        totalOperations++;
+        try {
+          const dirSuccess = await scanService.deleteDirectories(currentScan.scanId, directories);
+          console.log('Directory permanent deletion result:', dirSuccess);
+          if (dirSuccess) {
+            successfulOperations++;
+          } else {
+            overallSuccess = false;
+            errorMessages.push(`Failed to permanently delete ${directories.length} directories`);
+          }
+        } catch (error) {
+          console.error('Directory permanent deletion error:', error);
+          overallSuccess = false;
+          const message = error instanceof Error ? error.message : 'Unknown error deleting directories';
+          errorMessages.push(`Directory operation failed: ${message}`);
+        }
+      }
+
+      // Always try to refresh scan results, even on partial success
+      if (successfulOperations > 0) {
+        try {
+          console.log('Refreshing scan results...');
+          const updatedScan = await scanService.getScanResult(currentScan.scanId);
+          setCurrentScan(updatedScan);
+          
+          // Set appropriate success/error message
+          if (overallSuccess) {
+            console.log('All operations completed successfully');
+            setError(''); // Clear any previous errors
+          } else {
+            console.warn('Partial success in delete operations');
+            setError(`Partial success: ${successfulOperations}/${totalOperations} operations completed. ${errorMessages.join('. ')}`);
+          }
+        } catch (refreshError) {
+          console.error('Failed to refresh scan results:', refreshError);
+          setError(`Files permanently deleted but failed to refresh results: ${refreshError instanceof Error ? refreshError.message : 'Unknown error'}`);
+        }
+        } else {
+        // No operations succeeded
+        setError(errorMessages.length > 0 ? errorMessages.join('. ') : 'All operations failed to permanently delete items');
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Delete failed');
+      console.error('Unexpected error in delete operation:', err);
+      setError(err instanceof Error ? err.message : 'Unexpected error occurred during delete operation');
     } finally {
       setIsLoading(false);
     }

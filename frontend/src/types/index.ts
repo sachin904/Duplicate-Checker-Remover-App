@@ -7,6 +7,7 @@ export interface FileInfo {
   category: string;
   lastModified: string;
   duplicate: boolean;
+  markedForDeletion?: boolean;
 }
 
 export interface ScanResult {
@@ -15,6 +16,7 @@ export interface ScanResult {
   scanTime: string;
   files: FileInfo[];
   duplicateGroups: Record<string, FileInfo[]>;
+  directoryDuplicates?: Record<string, FileInfo[]>;
   categorizedFiles: Record<string, FileInfo[]>;
   totalFiles: number;
   duplicateCount: number;

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { FolderOpen, File, Package, Image, FileText, Video, Music, Archive, Wrench } from 'lucide-react';
 import { ScanResult, FileInfo } from '../types';
 
@@ -7,6 +7,36 @@ interface CategoryViewProps {
 }
 
 const CategoryView: React.FC<CategoryViewProps> = ({ scanResult }) => {
+  // Create an updated list of files with corrected duplicate status
+  // If only one file remains for a given hash, it should be marked as unique (duplicate = false)
+  const updatedCategorizedFiles = useMemo(() => {
+    if (!scanResult || !scanResult.files || !scanResult.categorizedFiles) return {};
+    
+    // Group all files by hash across all categories to determine true duplicate status
+    const filesByHash = scanResult.files.reduce<Record<string, FileInfo[]>>((acc, file) => {
+      if (!acc[file.hash]) acc[file.hash] = [];
+      acc[file.hash].push(file);
+      return acc;
+    }, {});
+
+    // Update duplicate status for categorized files
+    const updatedCategorized: Record<string, FileInfo[]> = {};
+    
+    Object.entries(scanResult.categorizedFiles).forEach(([category, files]) => {
+      updatedCategorized[category] = files.map(file => {
+        const filesWithSameHash = filesByHash[file.hash] || [];
+        if (filesWithSameHash.length <= 1) {
+          // Only one file with this hash remaining, so it's unique now
+          return { ...file, duplicate: false };
+        }
+        // Multiple files with same hash, keep original duplicate status
+        return file;
+      });
+    });
+
+    return updatedCategorized;
+  }, [scanResult]);
+
   const getCategoryIcon = (category: string) => {
     switch (category.toLowerCase()) {
       case 'applications':
@@ -51,7 +81,7 @@ const CategoryView: React.FC<CategoryViewProps> = ({ scanResult }) => {
     return Math.round(bytes / Math.pow(1024, i) * 100) / 100 + ' ' + sizes[i];
   };
 
-  const categorizedFiles = scanResult.categorizedFiles || {};
+  const categorizedFiles = updatedCategorizedFiles;
   const categories = Object.keys(categorizedFiles);
 
   return (

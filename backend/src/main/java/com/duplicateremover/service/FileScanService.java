@@ -203,15 +203,26 @@ public class FileScanService {
         Map<String, List<FileInfo>> categorizedGroups = categorizedFiles.stream()
                 .collect(Collectors.groupingBy(FileInfo::getCategory));
 
-        // Create final duplicate groups
+        // Create final duplicate groups with smart selection
         Map<String, List<FileInfo>> duplicateGroups = hashGroups.entrySet().stream()
                 .filter(entry -> entry.getValue().size() > 1)
-                .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+                .collect(Collectors.toMap(Map.Entry::getKey, entry -> {
+                    List<FileInfo> group = entry.getValue();
+                    // Mark files for deletion (keep the first one as original)
+                    for (int i = 1; i < group.size(); i++) {
+                        group.get(i).setMarkedForDeletion(true);
+                    }
+                    return group;
+                }));
+
+        // Detect directory duplicates
+        Map<String, List<FileInfo>> directoryDuplicates = detectDirectoryDuplicates(allFiles);
 
         // Create scan result
         ScanResult scanResult = new ScanResult(scanId, directory, LocalDateTime.now());
         scanResult.setFiles(categorizedFiles);
         scanResult.setDuplicateGroups(duplicateGroups);
+        scanResult.setDirectoryDuplicates(directoryDuplicates);
         scanResult.setCategorizedFiles(categorizedGroups);
         scanResult.setTotalFiles(allFiles.size());
         scanResult.setDuplicateCount(duplicateGroups.values().stream()
@@ -224,6 +235,65 @@ public class FileScanService {
         scanResults.put(scanId, scanResult);
         
         logger.info("Scan completed successfully for scanId: {}", scanId);
+    }
+
+    private Map<String, List<FileInfo>> detectDirectoryDuplicates(List<FileInfo> allFiles) {
+        Map<String, List<FileInfo>> directoryGroups = new HashMap<>();
+        
+        // Group files by directory
+        Map<String, List<FileInfo>> filesByDirectory = allFiles.stream()
+                .collect(Collectors.groupingBy(file -> {
+                    Path path = Paths.get(file.getFilePath());
+                    return path.getParent().toString();
+                }));
+
+        // Create directory signatures for comparison
+        Map<String, String> directorySignatures = new HashMap<>();
+        
+        for (Map.Entry<String, List<FileInfo>> entry : filesByDirectory.entrySet()) {
+            String directory = entry.getKey();
+            List<FileInfo> files = entry.getValue();
+            
+            // Create a signature for the directory based on file names, sizes, and hashes
+            String directorySignature = files.stream()
+                    .sorted(Comparator.comparing(FileInfo::getFileName))
+                    .map(file -> file.getFileName() + ":" + file.getSize() + ":" + file.getHash())
+                    .collect(Collectors.joining("|"));
+            
+            if (!directorySignature.isEmpty()) {
+                directorySignatures.put(directory, directorySignature);
+            }
+        }
+
+        // Group directories by signature
+        Map<String, List<String>> signatureGroups = new HashMap<>();
+        for (Map.Entry<String, String> entry : directorySignatures.entrySet()) {
+            String directory = entry.getKey();
+            String signature = entry.getValue();
+            
+            signatureGroups.computeIfAbsent(signature, k -> new ArrayList<>()).add(directory);
+        }
+
+        // Create directory duplicate groups
+        for (Map.Entry<String, List<String>> entry : signatureGroups.entrySet()) {
+            String signature = entry.getKey();
+            List<String> directories = entry.getValue();
+            
+            if (directories.size() > 1) {
+                // This is a duplicate directory group
+                List<FileInfo> allFilesInGroup = new ArrayList<>();
+                for (String directory : directories) {
+                    List<FileInfo> filesInDir = filesByDirectory.get(directory);
+                    if (filesInDir != null) {
+                        allFilesInGroup.addAll(filesInDir);
+                    }
+                }
+                directoryGroups.put(signature, allFilesInGroup);
+            }
+        }
+
+        logger.info("Found {} duplicate directory groups", directoryGroups.size());
+        return directoryGroups;
     }
 
     public Map<String, Object> getScanProgress(String scanId) {
@@ -254,10 +324,9 @@ public class FileScanService {
     private FileInfo createFileInfo(Path filePath) throws IOException {
         File file = filePath.toFile();
         String fileName = file.getName();
-        String extension = getFileExtension(fileName);
         String hash = fileHashService.generateSHA256Hash(file.getAbsolutePath());
         long size = file.length();
-        LocalDateTime lastModified = LocalDateTime.ofInstant(
+        LocalDateTime createdTime = LocalDateTime.ofInstant(
                 Files.getLastModifiedTime(filePath).toInstant(),
                 ZoneId.systemDefault()
         );
@@ -267,14 +336,8 @@ public class FileScanService {
                 fileName,
                 hash,
                 size,
-                extension,
-                lastModified
+                createdTime
         );
-    }
-
-    private String getFileExtension(String fileName) {
-        int lastDotIndex = fileName.lastIndexOf('.');
-        return lastDotIndex > 0 ? fileName.substring(lastDotIndex + 1).toLowerCase() : "";
     }
 
     public ScanResult getScanResult(String scanId) {
@@ -285,25 +348,201 @@ public class FileScanService {
         return new ArrayList<>(scanResults.values());
     }
 
+    /**
+     * Permanently deletes duplicate files
+     * WARNING: This operation cannot be undone!
+     */
     public boolean deleteDuplicateFiles(String scanId, List<String> filePaths) {
-        logger.info("Deleting duplicate files for scanId: {}", scanId);
+        logger.info("Permanently deleting {} files for scanId: {}", filePaths.size(), scanId);
         
         boolean allDeleted = true;
+        int successCount = 0;
+        int failureCount = 0;
+        
+        // Get the scan result to update it after deletion
+        ScanResult scanResult = scanResults.get(scanId);
+        if (scanResult == null) {
+            logger.error("Scan result not found for scanId: {}", scanId);
+            return false;
+        }
+        
+        List<String> successfullyDeletedFiles = new ArrayList<>();
+        
         for (String filePath : filePaths) {
             try {
-                File file = new File(filePath);
-                if (file.exists() && file.delete()) {
-                    logger.info("Successfully deleted file: {}", filePath);
-                } else {
-                    logger.warn("Failed to delete file: {}", filePath);
+                File fileToDelete = new File(filePath);
+                logger.info("Attempting to permanently delete file: {}", filePath);
+                
+                if (!fileToDelete.exists()) {
+                    logger.warn("File does not exist: {}", filePath);
+                    failureCount++;
+                    continue;
+                }
+                
+                if (!fileToDelete.isFile()) {
+                    logger.warn("Path is not a file: {}", filePath);
+                    failureCount++;
+                    continue;
+                }
+                
+                // Check if file is writable/deletable
+                if (!fileToDelete.canWrite()) {
+                    logger.warn("No write permission for file: {}", filePath);
+                    failureCount++;
                     allDeleted = false;
+                    continue;
+                }
+                
+                try {
+                    // Attempt direct deletion
+                    if (fileToDelete.delete()) {
+                        logger.info("Successfully permanently deleted file: {}", filePath);
+                        successCount++;
+                        successfullyDeletedFiles.add(filePath);
+                    } else {
+                        // If direct deletion fails, try to make it writable first
+                        logger.warn("Direct deletion failed, trying to make file writable: {}", filePath);
+                        if (fileToDelete.setWritable(true) && fileToDelete.delete()) {
+                            logger.info("Successfully deleted file after setting writable: {}", filePath);
+                            successCount++;
+                            successfullyDeletedFiles.add(filePath);
+                        } else {
+                            logger.error("Failed to permanently delete file: {}", filePath);
+                            failureCount++;
+                            allDeleted = false;
+                        }
+                    }
+                } catch (SecurityException e) {
+                    logger.error("Security exception deleting file: {}", filePath, e);
+                    allDeleted = false;
+                    failureCount++;
                 }
             } catch (Exception e) {
-                logger.error("Error deleting file: {}", filePath, e);
+                logger.error("Unexpected error deleting file: {}", filePath, e);
                 allDeleted = false;
+                failureCount++;
             }
         }
         
-        return allDeleted;
+        // Update the scan result to remove successfully deleted files
+        if (!successfullyDeletedFiles.isEmpty()) {
+            updateScanResultAfterDeletion(scanResult, successfullyDeletedFiles);
+        }
+        
+        logger.info("Permanent file deletion completed. Success: {}, Failed: {}, All successful: {}", 
+                   successCount, failureCount, allDeleted);
+        
+        // Return true if at least some files were successfully deleted
+        return successCount > 0;
+    }
+
+    /**
+     * Permanently deletes duplicate directories
+     * WARNING: This operation cannot be undone!
+     */
+    public boolean deleteDirectories(String scanId, List<String> directoryPaths) {
+        logger.info("Permanently deleting {} directories for scanId: {}", directoryPaths.size(), scanId);
+        
+        boolean allDeleted = true;
+        int successCount = 0;
+        int failureCount = 0;
+        
+        for (String directoryPath : directoryPaths) {
+            try {
+                File dirToDelete = new File(directoryPath);
+                logger.info("Attempting to permanently delete directory: {}", directoryPath);
+                
+                if (!dirToDelete.exists()) {
+                    logger.warn("Directory does not exist: {}", directoryPath);
+                    failureCount++;
+                    continue;
+                }
+                
+                if (!dirToDelete.isDirectory()) {
+                    logger.warn("Path is not a directory: {}", directoryPath);
+                    failureCount++;
+                    continue;
+                }
+                
+                // Check if directory is accessible
+                if (!dirToDelete.canRead() || !dirToDelete.canWrite()) {
+                    logger.warn("No read/write permission for directory: {}", directoryPath);
+                    failureCount++;
+                    allDeleted = false;
+                    continue;
+                }
+                
+                try {
+                    // Recursively delete directory using FileUtils
+                    FileUtils.deleteDirectory(dirToDelete);
+                    logger.info("Successfully permanently deleted directory: {}", directoryPath);
+                    successCount++;
+                } catch (IOException e) {
+                    logger.error("Failed to permanently delete directory: {}", directoryPath, e);
+                    failureCount++;
+                    allDeleted = false;
+                } catch (SecurityException e) {
+                    logger.error("Security exception deleting directory: {}", directoryPath, e);
+                    allDeleted = false;
+                    failureCount++;
+                }
+            } catch (Exception e) {
+                logger.error("Unexpected error deleting directory: {}", directoryPath, e);
+                allDeleted = false;
+                failureCount++;
+            }
+        }
+        
+        logger.info("Permanent directory deletion completed. Success: {}, Failed: {}, All successful: {}", 
+                   successCount, failureCount, allDeleted);
+        
+        return successCount > 0;
+    }
+
+    private void updateScanResultAfterDeletion(ScanResult scanResult, List<String> deletedFilePaths) {
+        logger.info("Updating scan result after deletion of {} files", deletedFilePaths.size());
+        
+        // Remove deleted files from the main files list
+        List<FileInfo> updatedFiles = scanResult.getFiles().stream()
+                .filter(file -> !deletedFilePaths.contains(file.getFilePath()))
+                .collect(Collectors.toList());
+        scanResult.setFiles(updatedFiles);
+        
+        // Update duplicate groups - remove deleted files and clean up empty groups
+        Map<String, List<FileInfo>> updatedDuplicateGroups = new HashMap<>();
+        for (Map.Entry<String, List<FileInfo>> entry : scanResult.getDuplicateGroups().entrySet()) {
+            List<FileInfo> filteredGroup = entry.getValue().stream()
+                    .filter(file -> !deletedFilePaths.contains(file.getFilePath()))
+                    .collect(Collectors.toList());
+            
+            // Only keep groups that still have duplicates (more than 1 file)
+            if (filteredGroup.size() > 1) {
+                updatedDuplicateGroups.put(entry.getKey(), filteredGroup);
+            }
+        }
+        scanResult.setDuplicateGroups(updatedDuplicateGroups);
+        
+        // Update categorized files
+        Map<String, List<FileInfo>> updatedCategorizedFiles = new HashMap<>();
+        for (Map.Entry<String, List<FileInfo>> entry : scanResult.getCategorizedFiles().entrySet()) {
+            List<FileInfo> filteredCategoryFiles = entry.getValue().stream()
+                    .filter(file -> !deletedFilePaths.contains(file.getFilePath()))
+                    .collect(Collectors.toList());
+            
+            if (!filteredCategoryFiles.isEmpty()) {
+                updatedCategorizedFiles.put(entry.getKey(), filteredCategoryFiles);
+            }
+        }
+        scanResult.setCategorizedFiles(updatedCategorizedFiles);
+        
+        // Recalculate counts
+        scanResult.setTotalFiles(updatedFiles.size());
+        int newDuplicateCount = updatedDuplicateGroups.values().stream()
+                .mapToInt(group -> group.size() - 1)
+                .sum();
+        scanResult.setDuplicateCount(newDuplicateCount);
+        
+        logger.info("Scan result updated. New totals - Files: {}, Duplicates: {}", 
+                   updatedFiles.size(), newDuplicateCount);
     }
 }
