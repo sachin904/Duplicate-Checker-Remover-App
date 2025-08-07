@@ -535,6 +535,30 @@ public class FileScanService {
         }
         scanResult.setCategorizedFiles(updatedCategorizedFiles);
         
+        // Update duplicate status on remaining files
+        // Group files by hash to determine which ones are still duplicates
+        Map<String, List<FileInfo>> filesByHash = updatedFiles.stream()
+                .collect(Collectors.groupingBy(FileInfo::getHash));
+        
+        // Update duplicate status for each file
+        for (FileInfo file : updatedFiles) {
+            List<FileInfo> filesWithSameHash = filesByHash.get(file.getHash());
+            boolean wasDuplicate = file.isDuplicate();
+            if (filesWithSameHash != null && filesWithSameHash.size() <= 1) {
+                // Only one file with this hash, so it's unique now
+                file.setDuplicate(false);
+                if (wasDuplicate) {
+                    logger.info("File {} is now unique (was duplicate)", file.getFileName());
+                }
+            } else if (filesWithSameHash != null && filesWithSameHash.size() > 1) {
+                // Multiple files with same hash, so they are duplicates
+                file.setDuplicate(true);
+                if (!wasDuplicate) {
+                    logger.info("File {} is now duplicate (was unique)", file.getFileName());
+                }
+            }
+        }
+        
         // Recalculate counts
         scanResult.setTotalFiles(updatedFiles.size());
         int newDuplicateCount = updatedDuplicateGroups.values().stream()
@@ -542,7 +566,11 @@ public class FileScanService {
                 .sum();
         scanResult.setDuplicateCount(newDuplicateCount);
         
-        logger.info("Scan result updated. New totals - Files: {}, Duplicates: {}", 
-                   updatedFiles.size(), newDuplicateCount);
+        // Log final state
+        int uniqueFiles = (int) updatedFiles.stream().filter(f -> !f.isDuplicate()).count();
+        int duplicateFiles = (int) updatedFiles.stream().filter(f -> f.isDuplicate()).count();
+        
+        logger.info("Scan result updated. New totals - Files: {}, Unique: {}, Duplicates: {}, Duplicate Groups: {}", 
+                   updatedFiles.size(), uniqueFiles, duplicateFiles, newDuplicateCount);
     }
 }

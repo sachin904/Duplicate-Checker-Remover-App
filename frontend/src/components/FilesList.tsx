@@ -14,6 +14,12 @@ const FilesList: React.FC<FilesListProps> = ({ scanResult, onDeleteFiles, isLoad
   const updatedFiles = useMemo(() => {
     if (!scanResult || !scanResult.files) return [];
     
+    console.log('Scan result updated:', {
+      totalFiles: scanResult.files.length,
+      duplicateCount: scanResult.duplicateCount,
+      filesWithDuplicates: scanResult.files.filter(f => f.duplicate).length
+    });
+    
     // Group files by hash
     const filesByHash = scanResult.files.reduce<Record<string, FileInfo[]>>((acc, file) => {
       if (!acc[file.hash]) acc[file.hash] = [];
@@ -22,21 +28,81 @@ const FilesList: React.FC<FilesListProps> = ({ scanResult, onDeleteFiles, isLoad
     }, {});
 
     // Update duplicate status: if only one file remains with a given hash, mark it as unique
-    return scanResult.files.map(file => {
+    const result = scanResult.files.map(file => {
       const filesWithSameHash = filesByHash[file.hash] || [];
+      const originalStatus = file.duplicate;
+      
+      let newStatus;
       if (filesWithSameHash.length <= 1) {
         // Only one file with this hash, so it's unique now
-        return { ...file, duplicate: false };
+        newStatus = false;
+      } else if (filesWithSameHash.length > 1) {
+        // Multiple files with same hash, so they are duplicates
+        newStatus = true;
+      } else {
+        // Fallback to original status
+        newStatus = originalStatus;
       }
-      // Multiple files with same hash, keep original duplicate status
-      return file;
+      
+      // Log status changes and track recently updated files
+      if (originalStatus !== newStatus) {
+        console.log(`File ${file.fileName} status changed from ${originalStatus ? 'duplicate' : 'unique'} to ${newStatus ? 'duplicate' : 'unique'}`);
+        // Track files that just became unique
+        if (!newStatus && originalStatus) {
+          setRecentlyUpdatedFiles(prev => new Set([...prev, file.filePath]));
+          // Clear the highlight after 3 seconds
+          setTimeout(() => {
+            setRecentlyUpdatedFiles(prev => {
+              const newSet = new Set(prev);
+              newSet.delete(file.filePath);
+              return newSet;
+            });
+          }, 3000);
+        }
+      }
+      
+      return { ...file, duplicate: newStatus };
     });
+    
+    console.log('Updated files:', {
+      totalFiles: result.length,
+      uniqueFiles: result.filter(f => !f.duplicate).length,
+      duplicateFiles: result.filter(f => f.duplicate).length
+    });
+    
+    return result;
   }, [scanResult]);
+
+  // Create updated duplicate groups based on the corrected files
+  const updatedDuplicateGroups = useMemo(() => {
+    if (!scanResult || !scanResult.duplicateGroups) return [];
+    
+    // Group files by hash using the updated files
+    const filesByHash = updatedFiles.reduce<Record<string, FileInfo[]>>((acc, file) => {
+      if (!acc[file.hash]) acc[file.hash] = [];
+      acc[file.hash].push(file);
+      return acc;
+    }, {});
+
+    // Only return groups that still have duplicates (more than 1 file)
+    // and ensure files within each group have the correct duplicate status
+    return Object.values(filesByHash)
+      .filter(group => group.length > 1)
+      .map(group => {
+        // All files in a group with more than 1 file are duplicates
+        // But we should use the updated duplicate status from updatedFiles
+        return group.map(file => {
+          const updatedFile = updatedFiles.find(f => f.filePath === file.filePath);
+          return updatedFile || file;
+        });
+      });
+  }, [updatedFiles, scanResult]);
 
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
   const [selectedDirectories, setSelectedDirectories] = useState<Set<string>>(new Set());
   const [showDuplicatesOnly, setShowDuplicatesOnly] = useState(false);
   const [activeTab, setActiveTab] = useState<'files' | 'duplicates' | 'directories'>('files');
+  const [recentlyUpdatedFiles, setRecentlyUpdatedFiles] = useState<Set<string>>(new Set());
 
   const handleFileSelect = (filePath: string) => {
     const newSelected = new Set(selectedFiles);
@@ -97,7 +163,6 @@ const FilesList: React.FC<FilesListProps> = ({ scanResult, onDeleteFiles, isLoad
   // Calculate updated duplicate count from the corrected files
   const currentDuplicateCount = updatedFiles.filter(file => file.duplicate).length;
   
-  const duplicateGroups = Object.values(scanResult.duplicateGroups || {});
   const directoryDuplicates = Object.values(scanResult.directoryDuplicates || {});
 
   return (
@@ -181,7 +246,7 @@ const FilesList: React.FC<FilesListProps> = ({ scanResult, onDeleteFiles, isLoad
         </div>
 
         {/* Action Buttons */}
-        {duplicateGroups.length > 0 && (
+        {updatedDuplicateGroups.length > 0 && (
           <div className="flex flex-wrap gap-4 mb-6">
 
 
@@ -211,25 +276,27 @@ const FilesList: React.FC<FilesListProps> = ({ scanResult, onDeleteFiles, isLoad
       </div>
 
       {/* Content based on active tab */}
-      {activeTab === 'files' && (
-        <FilesTable 
-          files={filesToDisplay}
-          selectedFiles={selectedFiles}
-          onFileSelect={handleFileSelect}
-          formatFileSize={formatFileSize}
-          formatDate={formatDate}
-        />
-      )}
+             {activeTab === 'files' && (
+         <FilesTable 
+           files={filesToDisplay}
+           selectedFiles={selectedFiles}
+           onFileSelect={handleFileSelect}
+           formatFileSize={formatFileSize}
+           formatDate={formatDate}
+           recentlyUpdatedFiles={recentlyUpdatedFiles}
+         />
+       )}
 
-      {activeTab === 'duplicates' && (
-        <DuplicatesView 
-          duplicateGroups={duplicateGroups}
-          selectedFiles={selectedFiles}
-          onFileSelect={handleFileSelect}
-          formatFileSize={formatFileSize}
-          formatDate={formatDate}
-        />
-      )}
+             {activeTab === 'duplicates' && (
+         <DuplicatesView 
+           duplicateGroups={updatedDuplicateGroups}
+           selectedFiles={selectedFiles}
+           onFileSelect={handleFileSelect}
+           formatFileSize={formatFileSize}
+           formatDate={formatDate}
+           recentlyUpdatedFiles={recentlyUpdatedFiles}
+         />
+       )}
 
       {activeTab === 'directories' && (
         <DirectoriesView 
@@ -251,7 +318,8 @@ const FilesTable: React.FC<{
   onFileSelect: (filePath: string) => void;
   formatFileSize: (bytes: number) => string;
   formatDate: (dateString: string) => string;
-}> = ({ files, selectedFiles, onFileSelect, formatFileSize, formatDate }) => {
+  recentlyUpdatedFiles: Set<string>;
+}> = ({ files, selectedFiles, onFileSelect, formatFileSize, formatDate, recentlyUpdatedFiles }) => {
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
       const allPaths = files.map(f => f.filePath);
@@ -301,16 +369,18 @@ const FilesTable: React.FC<{
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
             {files.map((file) => (
-              <tr 
-                key={file.filePath}
-                className={`hover:bg-gray-50 ${
-                  file.duplicate 
-                    ? file.markedForDeletion 
-                      ? 'bg-red-100' 
-                      : 'bg-yellow-50'
-                    : ''
-                }`}
-              >
+                             <tr 
+                 key={file.filePath}
+                 className={`hover:bg-gray-50 ${
+                   file.duplicate 
+                     ? file.markedForDeletion 
+                       ? 'bg-red-100' 
+                       : 'bg-yellow-50'
+                     : recentlyUpdatedFiles.has(file.filePath)
+                     ? 'bg-green-100 border-l-4 border-green-500'
+                     : ''
+                 }`}
+               >
                 <td className="px-6 py-4 whitespace-nowrap">
                   <input
                     type="checkbox"
@@ -357,9 +427,13 @@ const FilesTable: React.FC<{
                         Duplicate
                     </span>
                   ) : (
-                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                      recentlyUpdatedFiles.has(file.filePath) 
+                        ? 'bg-green-200 text-green-900 animate-pulse' 
+                        : 'bg-green-100 text-green-800'
+                    }`}>
                       <Check className="w-3 h-3 mr-1" />
-                      Unique
+                      {recentlyUpdatedFiles.has(file.filePath) ? 'Unique (Updated)' : 'Unique'}
                     </span>
                   )}
                 </td>
@@ -386,7 +460,8 @@ const DuplicatesView: React.FC<{
   onFileSelect: (filePath: string) => void;
   formatFileSize: (bytes: number) => string;
   formatDate: (dateString: string) => string;
-}> = ({ duplicateGroups, selectedFiles, onFileSelect, formatFileSize, formatDate }) => (
+  recentlyUpdatedFiles: Set<string>;
+}> = ({ duplicateGroups, selectedFiles, onFileSelect, formatFileSize, formatDate, recentlyUpdatedFiles }) => (
   <div className="space-y-4">
     {duplicateGroups.map((group, index) => (
       <div key={index} className="bg-white rounded-xl shadow-lg p-6">
@@ -430,9 +505,23 @@ const DuplicatesView: React.FC<{
               <div className="flex items-center space-x-4 text-xs text-gray-500">
                 <span>{formatFileSize(file.size)}</span>
                 <span>{formatDate(file.lastModified)}</span>
-                {file.markedForDeletion && (
+                {file.markedForDeletion ? (
                   <span className="bg-red-200 text-red-800 px-2 py-1 rounded text-xs font-medium">
                     Marked for Deletion
+                  </span>
+                ) : file.duplicate ? (
+                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                    <AlertTriangle className="w-3 h-3 mr-1" />
+                    Duplicate
+                  </span>
+                ) : (
+                  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                    recentlyUpdatedFiles.has(file.filePath) 
+                      ? 'bg-green-200 text-green-900 animate-pulse' 
+                      : 'bg-green-100 text-green-800'
+                  }`}>
+                    <Check className="w-3 h-3 mr-1" />
+                    {recentlyUpdatedFiles.has(file.filePath) ? 'Unique (Updated)' : 'Unique'}
                   </span>
                 )}
               </div>

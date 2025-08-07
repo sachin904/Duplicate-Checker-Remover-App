@@ -1,257 +1,352 @@
-# Duplicate Application Remover
+# Duplicate File Remover
 
-A full-stack web application for detecting and removing duplicate applications using content-based analysis with SHA-256 hashing.
+A powerful, intelligent duplicate file detection and removal application with cross-format content comparison, real-time scanning, and advanced categorization capabilities.
 
 ## 🚀 Features
 
-### Backend (Java Spring Boot)
-- **Directory Scanning**: Recursively scan specified directories
-- **SHA-256 Hashing**: Generate unique content hashes for duplicate detection
-- **Rule-based Categorization**: Organize files by type, extension, and patterns
-- **Real-time Progress Tracking**: Monitor scan progress and duplicate detection in real-time
-- **RESTful API**: Complete API for scan operations, file management, and logging
-- **Comprehensive Logging**: Track all operations with detailed logs
-- **File Deletion**: Secure deletion of selected duplicate files
+### 🔍 **Advanced Duplicate Detection**
+- **Cross-Format Content Comparison**: Detect duplicates across different file formats (PDF ↔ DOCX, DOC ↔ TXT, etc.)
+- **Metadata-Aware Hashing**: Ignores file metadata, focuses on actual content
+- **SHA256 Content Hashing**: Secure and accurate duplicate identification
+- **Real-Time Scanning**: Live progress tracking with detailed statistics
 
-### Frontend (React + TypeScript)
-- **Intuitive Interface**: Modern, responsive design with beautiful animations
-- **Real-time Scanning**: Live updates during scan operations with duplicate streaming
-- **Visual Duplicate Detection**: Highlighted duplicate groups with detailed information
-- **Category Management**: Organize files by type with visual categorization
-- **Batch Operations**: Select and delete multiple duplicates at once
-- **Settings Panel**: Configure scan paths and categorization rules
-- **Activity Logs**: Complete history of all scan operations
+### 📁 **Smart File Categorization**
+- **Content-Based Detection**: Uses magic numbers and file signatures
+- **Custom Categorization Rules**: User-defined rules for file organization
+- **Multiple Categories**: Images, Documents, Videos, Audio, Applications, Archives, etc.
+- **Persistent Settings**: Rules saved across sessions
 
-## 🆕 Real-Time Scanning Feature
+### 🎯 **Cross-Format Support**
+- **PDF Files**: Full text extraction using Apache PDFBox
+- **DOCX Files**: Content extraction using Apache POI
+- **DOC Files**: Legacy Word format support
+- **Text Files**: Direct content reading
+- **Images**: Magic number detection (OCR ready for future)
+- **Applications**: Executable file detection
+- **Archives**: ZIP, RAR, 7Z format support
 
-The application now supports **real-time duplicate detection** during scanning:
+### 💾 **Persistent Settings Management**
+- **localStorage Integration**: Automatic settings persistence
+- **Import/Export**: JSON-based settings backup and restore
+- **Reset to Defaults**: Easy restoration of default settings
+- **Backend API Ready**: Server-side storage capability
 
-### Real-Time Features
-- **Live Progress Tracking**: See scan progress with percentage completion
-- **Instant Duplicate Detection**: Duplicates appear as they are found during scanning
-- **Real-time Statistics**: Watch file counts and duplicate counts update live
-- **Pause/Resume**: Control real-time updates with pause/resume functionality
-- **Error Tracking**: View processing errors in real-time
-- **Smooth Animations**: Beautiful progress bars and status indicators
+### 📊 **Comprehensive Logging & Analytics**
+- **Scan History**: Complete audit trail of all operations
+- **Activity Timeline**: Detailed step-by-step operation logs
+- **Statistics Dashboard**: Files processed, duplicates found, categories
+- **Real-Time Progress**: Live scanning progress with ETA
 
-### How It Works
-1. **Start Scan**: Enter directory path and click "Start Scan"
-2. **Real-Time Monitoring**: Watch as files are processed and duplicates are detected
-3. **Live Updates**: Progress bar, statistics, and duplicate list update automatically
-4. **Complete Results**: Once scanning finishes, view full categorized results
+### 🗂️ **Advanced File Management**
+- **Bulk Operations**: Select and delete multiple files at once
+- **Directory Duplicates**: Detect duplicate directory structures
+- **Smart Selection**: Select all duplicates with one click
+- **Safe Deletion**: Confirmation dialogs and error handling
 
-## 🛠️ Tech Stack
+## 🏗️ Architecture
 
-### Backend
-- Java 11+
-- Spring Boot 2.7.0
-- Apache Commons IO
-- Apache Commons Codec
-- Drools (rule engine)
-- Maven
+### **Frontend (React + TypeScript)**
+```
+frontend/
+├── src/
+│   ├── components/          # React components
+│   │   ├── FilesList.tsx   # Main file listing and management
+│   │   ├── ScanForm.tsx    # Scan configuration and initiation
+│   │   ├── SettingsPanel.tsx # Settings and categorization rules
+│   │   ├── LogsPanel.tsx   # Activity logs and statistics
+│   │   ├── RealTimeScan.tsx # Real-time scanning interface
+│   │   └── CategoryView.tsx # Category-based file organization
+│   ├── services/           # API and business logic
+│   │   ├── api.ts         # HTTP client and API endpoints
+│   │   ├── fileService.ts # File operation utilities
+│   │   └── settingsService.ts # Settings management
+│   └── types/             # TypeScript type definitions
+```
 
-### Frontend
-- React 18
-- TypeScript
-- Tailwind CSS
-- Lucide React (icons)
-- Axios
-- Vite
+### **Backend (Spring Boot + Java)**
+```
+backend/
+├── src/main/java/com/duplicateremover/
+│   ├── controller/         # REST API endpoints
+│   │   └── FileScanController.java
+│   ├── service/           # Business logic
+│   │   ├── FileScanService.java    # Main scanning logic
+│   │   ├── FileHashService.java    # Content hashing and extraction
+│   │   └── FileCategoryService.java # File categorization
+│   └── model/             # Data models
+│       ├── FileInfo.java  # File metadata
+│       └── ScanResult.java # Scan results
+```
 
-## 📋 Prerequisites
+## 🛠️ Installation
 
-### Backend
-- Java JDK 11 or higher
-- Maven 3.6+
+### **Prerequisites**
+- **Java 11+** (for backend)
+- **Node.js 16+** (for frontend)
+- **Maven** (for backend build)
 
-### Frontend
-- Node.js 16+
-- npm or yarn
-
-## 🚀 Installation & Setup
-
-### Backend Setup
-
-1. Navigate to the backend directory:
+### **Backend Setup**
 ```bash
 cd backend
-```
-
-2. Build the project:
-```bash
-mvn clean package
-```
-
-3. Run the Spring Boot application:
-```bash
+mvn clean install
 mvn spring-boot:run
 ```
 
-The backend API will be available at `http://localhost:8080`
-
-### Frontend Setup
-
-1. Install dependencies:
+### **Frontend Setup**
 ```bash
+cd frontend
 npm install
-```
-
-2. Start the development server:
-```bash
 npm run dev
 ```
 
-The frontend will be available at `http://localhost:5173`
+### **Quick Start**
+```bash
+# Clone the repository
+git clone <repository-url>
+cd IBM_Hackathon
 
-## 🔧 Configuration
+# Start backend
+cd backend && mvn spring-boot:run
 
-### Backend Configuration
-Edit `backend/src/main/resources/application.properties`:
+# Start frontend (in new terminal)
+cd frontend && npm run dev
 
+# Access the application
+open http://localhost:5173
+```
+
+## 📖 Usage Guide
+
+### **1. Initial Setup**
+1. **Configure Settings**: Go to Settings panel to customize categorization rules
+2. **Set Default Path**: Optionally set a default scan directory
+3. **Import/Export**: Backup your settings using the export feature
+
+### **2. Starting a Scan**
+1. **Select Directory**: Choose the directory to scan for duplicates
+2. **Configure Options**: Set scan depth and file type filters
+3. **Start Scan**: Click "Start Scan" to begin the process
+4. **Monitor Progress**: Watch real-time progress and statistics
+
+### **3. Managing Duplicates**
+1. **Review Results**: Browse files in different views (All Files, Duplicates, Directories)
+2. **Select Files**: Choose which duplicates to remove
+3. **Bulk Operations**: Use "Select All Duplicates" for mass selection
+4. **Safe Deletion**: Confirm deletion with built-in safety checks
+
+### **4. Advanced Features**
+- **Cross-Format Detection**: PDF and DOCX with same content are detected as duplicates
+- **Category Organization**: Files are automatically categorized by content
+- **Persistent Settings**: Your rules and preferences are saved automatically
+
+## 🔧 Technical Details
+
+### **Cross-Format Duplicate Detection**
+
+The system uses advanced content extraction to detect duplicates across different file formats:
+
+```java
+// PDF Content Extraction
+private String extractPDFText(String filePath) throws IOException {
+    try (PDDocument document = PDDocument.load(new File(filePath))) {
+        PDFTextStripper stripper = new PDFTextStripper();
+        String text = stripper.getText(document);
+        return DigestUtils.sha256Hex(text.getBytes("UTF-8"));
+    }
+}
+
+// DOCX Content Extraction
+private String extractDOCXText(String filePath) throws IOException {
+    try (XWPFDocument document = new XWPFDocument(new FileInputStream(filePath))) {
+        StringBuilder content = new StringBuilder();
+        document.getParagraphs().forEach(paragraph -> {
+            content.append(paragraph.getText()).append("\n");
+        });
+        return DigestUtils.sha256Hex(content.toString().getBytes("UTF-8"));
+    }
+}
+```
+
+### **Settings Persistence**
+
+The frontend automatically saves settings using localStorage and optional backend storage:
+
+```typescript
+// Automatic persistence
+useEffect(() => {
+  settingsService.saveSettings(settings);
+}, [settings]);
+
+// Import/Export functionality
+exportSettings(settings: SettingsData): string {
+  return JSON.stringify(settings, null, 2);
+}
+```
+
+### **Real-Time Progress Tracking**
+
+The backend provides real-time progress updates during scanning:
+
+```java
+public static class ScanProgress {
+    private String scanId;
+    private String status;
+    private int totalFiles;
+    private int processedFiles;
+    private int duplicateCount;
+    private LocalDateTime startTime;
+    private LocalDateTime lastUpdate;
+    private String currentDirectory;
+    private List<String> errors;
+}
+```
+
+## 📊 Performance Features
+
+### **Optimized Scanning**
+- **Streaming Processing**: Files processed in streams to handle large directories
+- **Memory Efficient**: Minimal memory footprint during scanning
+- **Progress Tracking**: Real-time progress with detailed statistics
+- **Error Handling**: Robust error handling with detailed logging
+
+### **Smart Categorization**
+- **Magic Number Detection**: Identifies file types by content signatures
+- **Fallback Mechanisms**: Multiple detection methods for reliability
+- **Custom Rules**: User-defined categorization patterns
+- **Persistent Storage**: Settings saved across sessions
+
+## 🔒 Security & Safety
+
+### **Safe File Operations**
+- **Confirmation Dialogs**: All deletions require user confirmation
+- **Error Handling**: Comprehensive error handling and recovery
+- **Logging**: Complete audit trail of all operations
+- **Validation**: Input validation and sanitization
+
+### **Data Protection**
+- **Local Processing**: Files processed locally, no cloud upload
+- **Secure Hashing**: SHA256 for accurate duplicate detection
+- **Privacy Focused**: No data collection or tracking
+
+## 🧪 Testing
+
+### **Backend Testing**
+```bash
+cd backend
+mvn test
+```
+
+### **Frontend Testing**
+```bash
+cd frontend
+npm test
+```
+
+### **Integration Testing**
+```bash
+# Start both servers
+./start-servers.bat
+```
+
+## 📈 Monitoring & Logging
+
+### **Activity Logs**
+- **Scan History**: Complete record of all scans
+- **Operation Timeline**: Step-by-step operation details
+- **Error Tracking**: Detailed error logs with context
+- **Performance Metrics**: Scan duration and file processing stats
+
+### **Statistics Dashboard**
+- **Total Scans**: Number of completed scans
+- **Files Processed**: Total files analyzed
+- **Duplicates Found**: Total duplicates detected
+- **Categories**: Number of file categories identified
+
+## 🔄 API Endpoints
+
+### **Scan Management**
+- `POST /api/scan` - Start a new scan
+- `GET /api/scan/{scanId}` - Get scan results
+- `GET /api/scan/{scanId}/progress` - Get scan progress
+- `GET /api/scans` - Get all scans
+
+### **File Operations**
+- `DELETE /api/duplicates/{scanId}` - Delete duplicate files
+- `DELETE /api/directories/{scanId}` - Delete duplicate directories
+
+### **Settings Management**
+- `GET /api/settings` - Get user settings
+- `POST /api/settings` - Save user settings
+
+## 🛠️ Configuration
+
+### **Backend Configuration**
 ```properties
-# Server Configuration
+# application.properties
 server.port=8080
-
-# CORS Configuration
-spring.web.cors.allowed-origins=http://localhost:5173
-
-# File Upload Limits
-spring.servlet.multipart.max-file-size=100MB
-spring.servlet.multipart.max-request-size=100MB
+logging.level.com.duplicateremover=DEBUG
+spring.jackson.default-property-inclusion=non_null
 ```
 
-### Frontend Configuration
-The frontend automatically connects to the backend at `http://localhost:8080`. To change this, update the `API_BASE_URL` in `src/services/api.ts`.
-
-## 📡 API Endpoints
-
-### Scan Operations
-- `POST /api/scan` - Start a new directory scan
-- `GET /api/scan/{scanId}` - Get scan results by ID
-- `GET /api/scan/{scanId}/progress` - Get real-time scan progress
-- `GET /api/scan/{scanId}/duplicates/stream` - Get real-time duplicate stream
-- `GET /api/scans` - Get all scan results
-
-### File Management  
-- `DELETE /api/duplicates/{scanId}` - Delete selected duplicate files
-
-### System
-- `GET /api/health` - Health check endpoint
-
-## 🎯 Usage
-
-### Real-Time Scanning
-1. **Start a Scan**
-   - Enter a directory path in the scan form
-   - Click "Start Scan" to begin processing
-   - Watch real-time progress and duplicate detection
-
-2. **Monitor Progress**
-   - View live progress bar and statistics
-   - See duplicates appear as they are found
-   - Monitor processing errors in real-time
-   - Use pause/resume to control updates
-
-3. **Review Results**
-   - Navigate to the "Files" tab to see all scanned files
-   - Duplicate files are highlighted in red
-   - Use filters to show only duplicates
-
-4. **Categorize Files**
-   - Visit the "Categories" tab to see files organized by type
-   - Each category shows file count and duplicate statistics
-
-5. **Delete Duplicates**
-   - Select duplicate files using checkboxes
-   - Use "Select All Duplicates" for batch selection
-   - Click "Delete Selected" to remove chosen files
-
-6. **Configure Settings**
-   - Set default scan directories
-   - Add custom categorization rules
-   - Configure file type patterns
-
-7. **View Logs**
-   - Check the "Logs" tab for scan history
-   - Review detailed activity timelines
-   - Filter logs by status or search terms
-
-## 🏗️ Project Structure
-
-```
-├── backend/                    # Java Spring Boot backend
-│   ├── src/main/java/com/duplicateremover/
-│   │   ├── Application.java           # Main application class
-│   │   ├── controller/               # REST controllers
-│   │   ├── model/                   # Data models
-│   │   ├── service/                 # Business logic
-│   │   └── config/                  # Configuration classes
-│   ├── src/main/resources/          # Configuration files
-│   └── pom.xml                     # Maven dependencies
-│
-├── frontend/                   # React frontend
-│   ├── src/
-│   │   ├── components/              # React components
-│   │   │   ├── RealTimeScan.tsx     # Real-time scanning component
-│   │   │   ├── ScanForm.tsx         # Directory scan form
-│   │   │   ├── FilesList.tsx        # Files listing and management
-│   │   │   ├── CategoryView.tsx     # Categorized files view
-│   │   │   ├── SettingsPanel.tsx    # Settings configuration
-│   │   │   └── LogsPanel.tsx        # Activity logs and history
-│   │   ├── services/               # API service layer
-│   │   ├── types/                  # TypeScript interfaces
-│   │   └── App.tsx                 # Main app component
-│   ├── public/                     # Static assets
-│   └── package.json               # Node.js dependencies
-│
-└── README.md                  # This file
+### **Frontend Configuration**
+```typescript
+// vite.config.ts
+export default defineConfig({
+  server: {
+    port: 5173,
+    proxy: {
+      '/api': 'http://localhost:8080'
+    }
+  }
+})
 ```
 
-## 🎨 Design Features
+## 🚀 Deployment
 
-- **Modern UI**: Clean, professional interface with subtle animations
-- **Responsive Design**: Works seamlessly on desktop and mobile devices
-- **Visual Feedback**: Loading states, progress indicators, and status updates
-- **Color-coded Categories**: Easy identification of file types
-- **Interactive Elements**: Hover effects and smooth transitions
-- **Accessibility**: Proper contrast ratios and keyboard navigation
-- **Real-time Updates**: Live progress tracking and duplicate streaming
+### **Development**
+```bash
+# Backend
+cd backend && mvn spring-boot:run
 
-## ⚠️ Important Notes
+# Frontend
+cd frontend && npm run dev
+```
 
-### WebContainer Limitations
-This application is designed to run in a standard development environment. The Java backend requires a full JDK installation and cannot run in browser-based environments like WebContainer.
+### **Production**
+```bash
+# Build backend
+cd backend && mvn clean package
+java -jar target/duplicate-app-remover-1.0.0.jar
 
-### File System Access
-The application requires appropriate file system permissions to:
-- Read files for scanning and hashing
-- Delete duplicate files when requested
-- Access directory structures recursively
-
-### Security Considerations
-- File deletion operations are irreversible
-- Always backup important data before running bulk delete operations
-- The application only deletes files explicitly selected by the user
+# Build frontend
+cd frontend && npm run build
+# Serve dist/ folder with any web server
+```
 
 ## 🤝 Contributing
 
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+1. **Fork the repository**
+2. **Create a feature branch**: `git checkout -b feature/amazing-feature`
+3. **Commit changes**: `git commit -m 'Add amazing feature'`
+4. **Push to branch**: `git push origin feature/amazing-feature`
+5. **Open a Pull Request**
 
-## 📄 License
+## 📝 License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## 🆘 Support
+## 🙏 Acknowledgments
 
-If you encounter any issues:
+- **Apache PDFBox** for PDF text extraction
+- **Apache POI** for Office document handling
+- **Spring Boot** for robust backend framework
+- **React** for modern frontend development
+- **Tailwind CSS** for beautiful UI components
 
-1. Check the application logs for error details
-2. Ensure all prerequisites are installed correctly
-3. Verify file system permissions
-4. Check network connectivity between frontend and backend
+## 📞 Support
 
-For additional support, please open an issue in the project repository.
+For support, please open an issue in the GitHub repository or contact the development team.
+
+---
+
+**Built with ❤️ for efficient file management and duplicate detection**

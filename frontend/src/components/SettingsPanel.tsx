@@ -1,21 +1,12 @@
-import React, { useState } from 'react';
-import { Settings, FolderOpen, Save, Plus, Trash2, Edit } from 'lucide-react';
-
-interface CategoryRule {
-  id: string;
-  name: string;
-  pattern: string;
-  category: string;
-  type: 'extension' | 'filename' | 'path';
-}
+import React, { useState, useEffect } from 'react';
+import { Settings, FolderOpen, Save, Plus, Trash2, Edit, Download, Upload, RotateCcw } from 'lucide-react';
+import { settingsService, SettingsData, CategoryRule } from '../services/settingsService';
 
 const SettingsPanel: React.FC = () => {
-  const [defaultScanPath, setDefaultScanPath] = useState('');
-  const [categoryRules, setCategoryRules] = useState<CategoryRule[]>([
-    { id: '1', name: 'Executable Files', pattern: 'exe,msi,app', category: 'Applications', type: 'extension' },
-    { id: '2', name: 'Setup Files', pattern: '*setup*,*install*', category: 'Installers', type: 'filename' },
-    { id: '3', name: 'Document Files', pattern: 'pdf,doc,docx,txt', category: 'Documents', type: 'extension' },
-  ]);
+  // Load settings from service on component mount
+  const [settings, setSettings] = useState<SettingsData>(() => {
+    return settingsService.loadSettings();
+  });
   
   const [newRule, setNewRule] = useState<Omit<CategoryRule, 'id'>>({
     name: '',
@@ -25,22 +16,61 @@ const SettingsPanel: React.FC = () => {
   });
   
   const [editingRule, setEditingRule] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
 
-  const handleSaveSettings = () => {
-    // Here you would typically save to localStorage or send to backend
-    console.log('Saving settings:', { defaultScanPath, categoryRules });
-    alert('Settings saved successfully!');
+  // Save settings to localStorage whenever settings change
+  useEffect(() => {
+    settingsService.saveSettings(settings);
+  }, [settings]);
+
+  // Clear message after 3 seconds
+  useEffect(() => {
+    if (message) {
+      const timer = setTimeout(() => setMessage(null), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [message]);
+
+  const showMessage = (type: 'success' | 'error', text: string) => {
+    setMessage({ type, text });
+  };
+
+  const handleSaveSettings = async () => {
+    setIsSaving(true);
+    try {
+      // Save to localStorage (already done by useEffect)
+      // Optionally save to backend API
+      await settingsService.saveSettingsToBackend(settings);
+      showMessage('success', 'Settings saved successfully!');
+    } catch (error) {
+      console.error('Failed to save settings:', error);
+      showMessage('error', 'Failed to save settings. Please try again.');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleAddRule = () => {
     if (newRule.name && newRule.pattern && newRule.category) {
-      setCategoryRules([...categoryRules, { ...newRule, id: Date.now().toString() }]);
+      const newRuleWithId = { ...newRule, id: Date.now().toString() };
+      setSettings(prev => ({
+        ...prev,
+        categoryRules: [...prev.categoryRules, newRuleWithId]
+      }));
       setNewRule({ name: '', pattern: '', category: '', type: 'extension' });
+      showMessage('success', 'Rule added successfully!');
+    } else {
+      showMessage('error', 'Please fill in all fields for the new rule.');
     }
   };
 
   const handleDeleteRule = (id: string) => {
-    setCategoryRules(categoryRules.filter(rule => rule.id !== id));
+    setSettings(prev => ({
+      ...prev,
+      categoryRules: prev.categoryRules.filter(rule => rule.id !== id)
+    }));
+    showMessage('success', 'Rule deleted successfully!');
   };
 
   const handleEditRule = (id: string) => {
@@ -48,56 +78,91 @@ const SettingsPanel: React.FC = () => {
   };
 
   const handleUpdateRule = (id: string, updatedRule: Partial<CategoryRule>) => {
-    setCategoryRules(categoryRules.map(rule => 
-      rule.id === id ? { ...rule, ...updatedRule } : rule
-    ));
+    setSettings(prev => ({
+      ...prev,
+      categoryRules: prev.categoryRules.map(rule => 
+        rule.id === id ? { ...rule, ...updatedRule } : rule
+      )
+    }));
+  };
+
+  const handleDefaultScanPathChange = (path: string) => {
+    setSettings(prev => ({
+      ...prev,
+      defaultScanPath: path
+    }));
+  };
+
+  const resetToDefaults = () => {
+    if (confirm('Are you sure you want to reset all settings to defaults? This cannot be undone.')) {
+      const defaultSettings = settingsService.resetSettings();
+      setSettings(defaultSettings);
+      showMessage('success', 'Settings reset to defaults!');
+    }
+  };
+
+  const exportSettings = () => {
+    try {
+      const settingsJson = settingsService.exportSettings(settings);
+      const blob = new Blob([settingsJson], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'duplicate-remover-settings.json';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      showMessage('success', 'Settings exported successfully!');
+    } catch (error) {
+      console.error('Failed to export settings:', error);
+      showMessage('error', 'Failed to export settings.');
+    }
+  };
+
+  const importSettings = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const content = e.target?.result as string;
+        const importedSettings = settingsService.importSettings(content);
+        setSettings(importedSettings);
+        showMessage('success', 'Settings imported successfully!');
+      } catch (error) {
+        console.error('Failed to import settings:', error);
+        showMessage('error', 'Failed to import settings. Please check the file format.');
+      }
+    };
+    reader.readAsText(file);
+    
+    // Reset the input
+    event.target.value = '';
   };
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="bg-white rounded-xl shadow-lg p-6">
-        <div className="flex items-center space-x-3">
-          <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-            <Settings className="w-6 h-6 text-blue-600" />
-          </div>
-          <div>
-            <h3 className="text-xl font-bold text-gray-900">Settings</h3>
-            <p className="text-gray-600">Configure scan paths and categorization rules</p>
-          </div>
+      {/* Message Display */}
+      {message && (
+        <div className={`p-4 rounded-lg ${
+          message.type === 'success' 
+            ? 'bg-green-100 text-green-800 border border-green-200' 
+            : 'bg-red-100 text-red-800 border border-red-200'
+        }`}>
+          {message.text}
         </div>
-      </div>
+      )}
 
-      {/* Default Scan Path */}
-      <div className="bg-white rounded-xl shadow-lg p-6">
-        <h4 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-          <FolderOpen className="w-5 h-5 mr-2 text-blue-600" />
-          Default Scan Path
-        </h4>
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Default Directory Path
-            </label>
-            <input
-              type="text"
-              value={defaultScanPath}
-              onChange={(e) => setDefaultScanPath(e.target.value)}
-              placeholder="/path/to/default/directory"
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            />
-            <p className="mt-2 text-sm text-gray-500">
-              This path will be pre-filled when starting a new scan
-            </p>
-          </div>
-        </div>
-      </div>
 
       {/* Category Rules */}
       <div className="bg-white rounded-xl shadow-lg p-6">
-        <h4 className="text-lg font-semibold text-gray-900 mb-4">
-          Categorization Rules
-        </h4>
+        <div className="flex items-center justify-between mb-4">
+          <h4 className="text-lg font-semibold text-gray-900">
+            Categorization Rules
+          </h4>
+        </div>
         
         {/* Add New Rule Form */}
         <div className="bg-gray-50 rounded-lg p-4 mb-6">
@@ -146,7 +211,7 @@ const SettingsPanel: React.FC = () => {
 
         {/* Existing Rules */}
         <div className="space-y-3">
-          {categoryRules.map((rule) => (
+          {settings.categoryRules.map((rule) => (
             <div key={rule.id} className="border border-gray-200 rounded-lg p-4">
               {editingRule === rule.id ? (
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -221,10 +286,11 @@ const SettingsPanel: React.FC = () => {
       <div className="flex justify-end">
         <button
           onClick={handleSaveSettings}
-          className="bg-gradient-to-r from-blue-600 to-purple-600 text-white px-6 py-3 rounded-lg font-medium hover:from-blue-700 hover:to-purple-700 transition-all duration-200 flex items-center space-x-2"
+          disabled={isSaving}
+          className="bg-gradient-to-r from-blue-600 to-purple-600 text-white px-6 py-3 rounded-lg font-medium hover:from-blue-700 hover:to-purple-700 transition-all duration-200 flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <Save className="w-4 h-4" />
-          <span>Save Settings</span>
+          <span>{isSaving ? 'Saving...' : 'Save Settings'}</span>
         </button>
       </div>
     </div>
